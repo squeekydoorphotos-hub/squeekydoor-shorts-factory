@@ -1,0 +1,3 @@
+# Tells Railway to install ffmpeg (needed for video processing)
+[phases.setup]
+nixPkgs = ["ffmpeg"]
