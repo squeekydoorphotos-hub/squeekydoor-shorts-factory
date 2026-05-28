@@ -20,6 +20,16 @@ ENV VARS needed (.env):
     FRONTEND_URL        = https://your-netlify-site.netlify.app
 """
 
+
+# ── bcrypt compatibility patch for passlib ─────────────────────────
+try:
+    import bcrypt as _bcrypt
+    if not hasattr(_bcrypt, "__about__"):
+        _bcrypt.__about__ = type("_", (), {"__version__": getattr(_bcrypt, "__version__", "3.2.2")})()
+except Exception:
+    pass
+# ───────────────────────────────────────────────────────────────────
+
 import os, uuid, json, shutil, asyncio, tempfile, math, subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
