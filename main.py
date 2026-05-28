@@ -20,15 +20,13 @@ ENV VARS needed (.env):
     FRONTEND_URL        = https://your-netlify-site.netlify.app
 """
 
-
-# ── bcrypt compatibility patch for passlib ─────────────────────────
+# ── bcrypt / passlib compatibility patch ──────────────────────────
 try:
     import bcrypt as _bcrypt
     if not hasattr(_bcrypt, "__about__"):
         _bcrypt.__about__ = type("_", (), {"__version__": getattr(_bcrypt, "__version__", "3.2.2")})()
 except Exception:
     pass
-# ───────────────────────────────────────────────────────────────────
 
 import os, uuid, json, shutil, asyncio, tempfile, math, subprocess
 from datetime import datetime, timedelta
@@ -73,6 +71,15 @@ PAYPAL_BASE = ("https://api-m.sandbox.paypal.com" if PAYPAL_MODE == "sandbox"
                else "https://api-m.paypal.com")
 
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
+
+# ── Admin / owner accounts — bypass all token checks ──────────────
+ADMIN_EMAILS = {
+    "thelabsdp206@gmail.com",
+    "squeekydoorphotos@gmail.com",
+    "layzphotos@gmail.com",
+    # ADD OWNER 4 EMAIL HERE
+    # ADD OWNER 5 EMAIL HERE
+}
 
 JOBS_DIR  = Path(tempfile.gettempdir()) / "sdp_jobs"
 FONTS_DIR = Path(__file__).parent / "fonts"
@@ -336,7 +343,8 @@ def me(user: User = Depends(get_current_user)):
     return {"id": user.id, "email": user.email, "tokens": user.tokens,
             "plan": user.plan, "created_at": user.created_at,
             "next_free_job_at": next_free,
-            "tokens_per_clip": TOKENS_PER_CLIP}
+            "tokens_per_clip": TOKENS_PER_CLIP,
+            "is_admin": user.email in ADMIN_EMAILS}
 
 # ══════════════════════════════════════════════════════════════════
 #  JOB ROUTES
@@ -347,28 +355,30 @@ def create_job(data: JobCreateIn, bg: BackgroundTasks,
                user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
     cost = round(data.clip_count * TOKENS_PER_CLIP, 1)
+    admin = user.email in ADMIN_EMAILS
 
-    # Free plan: max 3 clips, 1 job per week
-    if user.plan == "free":
-        if data.clip_count > 3:
-            raise HTTPException(402, "Free plan: max 3 clips per job. Upgrade for more.")
-        if user.last_free_job_at:
-            from datetime import timezone
-            since = (datetime.utcnow() - user.last_free_job_at).total_seconds()
-            if since < 7 * 24 * 3600:
-                next_at = user.last_free_job_at + timedelta(days=7)
-                raise HTTPException(402,
-                    f"Free plan: 1 video per week. Next available: {next_at.strftime('%b %d at %I:%M %p')} UTC")
+    if not admin:
+        # Free plan: max 3 clips, 1 job per week
+        if user.plan == "free":
+            if data.clip_count > 3:
+                raise HTTPException(402, "Free plan: max 3 clips per job. Upgrade for more.")
+            if user.last_free_job_at:
+                from datetime import timezone
+                since = (datetime.utcnow() - user.last_free_job_at).total_seconds()
+                if since < 7 * 24 * 3600:
+                    next_at = user.last_free_job_at + timedelta(days=7)
+                    raise HTTPException(402,
+                        f"Free plan: 1 video per week. Next available: {next_at.strftime('%b %d at %I:%M %p')} UTC")
 
-    if user.tokens < cost:
-        raise HTTPException(402,
-            f"Not enough tokens. This job costs {cost} tokens, you have {user.tokens:.1f}.")
+        if user.tokens < cost:
+            raise HTTPException(402,
+                f"Not enough tokens. This job costs {cost} tokens, you have {user.tokens:.1f}.")
 
-    # Deduct tokens immediately
-    user.tokens -= cost
-    if user.plan == "free":
-        user.last_free_job_at = datetime.utcnow()
-    db.commit()
+        # Deduct tokens immediately
+        user.tokens -= cost
+        if user.plan == "free":
+            user.last_free_job_at = datetime.utcnow()
+        db.commit()
 
     job = Job(user_id=user.id, source_url=data.source_url,
               settings=json.dumps(data.dict()), clips_count=0)
