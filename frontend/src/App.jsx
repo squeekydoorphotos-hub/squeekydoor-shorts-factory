@@ -3,32 +3,34 @@ import { useState, useEffect, useCallback } from "react"
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
 const C = {
-  dark:    "#0A0A0F",
-  card:    "#12121A",
-  field:   "#1A1A26",
-  emerald: "#00FF88",
-  gold:    "#FFD700",
-  dim:     "#888899",
-  text:    "#CCCCDD",
-  red:     "#FF5555",
-  orange:  "#FF8C00",
-  border:  "#2A2A3A",
+  dark:    "#000000",
+  card:    "#0D0D0D",
+  field:   "#141414",
+  emerald: "#4a8c5c",
+  gold:    "#C9A443",
+  dim:     "#888888",
+  text:    "#CCCCCC",
+  red:     "#CC4444",
+  orange:  "#CC7700",
+  border:  "#1E1E1E",
 }
 
 const css = {
   page:  { minHeight:"100vh", background:C.dark, color:C.text,
-           fontFamily:"'Segoe UI', Arial, sans-serif" },
-  card:  { background:C.card, borderRadius:12, padding:24,
+           fontFamily:"'Georgia', 'Palatino Linotype', serif" },
+  card:  { background:C.card, borderRadius:4, padding:24,
            border:`1px solid ${C.border}` },
   input: { width:"100%", background:C.field, border:`1px solid ${C.border}`,
            borderRadius:8, padding:"10px 14px", color:C.text, fontSize:14,
            outline:"none", boxSizing:"border-box" },
   btn:   (bg=C.emerald, fg=C.dark) => ({
-           background:bg, color:fg, border:"none", borderRadius:8,
-           padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }),
+           background:bg, color:fg, border:"none", borderRadius:2,
+           padding:"10px 20px", fontWeight:600, fontSize:13, cursor:"pointer",
+           letterSpacing:1, textTransform:"uppercase",
+           fontFamily:"'Segoe UI', Arial, sans-serif" }),
   label: { fontSize:12, color:C.dim, marginBottom:4, display:"block" },
-  sec:   { fontSize:11, fontWeight:700, color:C.gold, letterSpacing:1,
-           textTransform:"uppercase", marginBottom:8 },
+  sec:   { fontSize:10, fontWeight:700, color:C.emerald, letterSpacing:3,
+           textTransform:"uppercase", marginBottom:8, fontFamily:"'Segoe UI', Arial, sans-serif" },
 }
 
 const TOKENS_PER_CLIP = 0.5
@@ -187,9 +189,13 @@ function Header({ user, onLogout, onNav }) {
     <header style={{ background:C.card, borderBottom:`1px solid ${C.border}`,
                      padding:"0 24px", display:"flex", alignItems:"center",
                      height:64, gap:16 }}>
-      <span style={{ color:C.emerald, fontWeight:900, fontSize:20, cursor:"pointer" }}
+      <span style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}
             onClick={() => onNav("landing")}>
-        🚪 SDP SHORTS
+        <span style={{ color:C.gold, fontWeight:700, fontSize:22,
+                       fontFamily:"'Georgia', serif", letterSpacing:1 }}>SDP</span>
+        <span style={{ color:C.text, fontWeight:400, fontSize:16,
+                       fontFamily:"'Georgia', serif", letterSpacing:3,
+                       textTransform:"uppercase" }}>Shorts</span>
       </span>
       <span style={{ flex:1 }}/>
       {user ? (
@@ -229,7 +235,7 @@ function Landing({ onNav }) {
     <div style={{ maxWidth:900, margin:"0 auto", padding:"60px 24px" }}>
       <div style={{ textAlign:"center", marginBottom:64 }}>
         <div style={{ fontSize:48, fontWeight:900, lineHeight:1.1,
-                      background:`linear-gradient(135deg,${C.emerald},${C.gold})`,
+                      background:`linear-gradient(135deg,${C.gold},${C.emerald})`,
                       WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
                       marginBottom:16 }}>
           Turn Any Video Into<br/>Viral Shorts — Instantly
@@ -284,7 +290,7 @@ function Landing({ onNav }) {
       </div>
 
       <div style={{ ...css.card, textAlign:"center",
-                    background:"linear-gradient(135deg,#0A1A12,#1A1A0A)",
+                    background:"linear-gradient(135deg,#0A0D09,#0D0A04)",
                     border:`1px solid ${C.emerald}40` }}>
         <div style={{ fontSize:24, fontWeight:700, marginBottom:8 }}>
           Ready to 10x your content output?
@@ -332,7 +338,8 @@ function Pricing({ token, onNav }) {
 
   return (
     <div style={{ maxWidth:960, margin:"0 auto", padding:"48px 24px" }}>
-      <h1 style={{ textAlign:"center", color:C.emerald, marginBottom:4 }}>Pricing</h1>
+      <h1 style={{ textAlign:"center", color:C.gold, marginBottom:4,
+                  fontFamily:"'Georgia', serif", fontWeight:400, fontSize:36 }}>Pricing</h1>
       <p style={{ textAlign:"center", color:C.dim, marginBottom:8 }}>
         <strong style={{ color:C.gold }}>0.5 tokens per clip</strong> — cheaper than Opus Clip, no compromises
       </p>
@@ -407,8 +414,11 @@ function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, 
     <div style={{ maxWidth:400, margin:"80px auto", padding:"0 24px" }}>
       <div style={css.card}>
         <div style={{ textAlign:"center", marginBottom:24 }}>
-          <div style={{ fontSize:28 }}>🚪</div>
-          <h2 style={{ color:C.emerald, margin:"8px 0 4px" }}>{title}</h2>
+          <div style={{ color:C.gold, fontWeight:700, fontSize:18,
+                       fontFamily:"'Georgia', serif", letterSpacing:2,
+                       textTransform:"uppercase", marginBottom:4 }}>SDP SHORTS</div>
+          <h2 style={{ color:C.gold, margin:"8px 0 4px", fontFamily:"'Georgia', serif",
+                       fontWeight:400 }}>{title}</h2>
           {sub && <div style={{ color:C.dim, fontSize:13 }}>{sub}</div>}
         </div>
         {error && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
@@ -704,7 +714,8 @@ function NewJob({ user, setUser, token, onNav }) {
 
   return (
     <div style={{ maxWidth:700, margin:"0 auto", padding:"32px 24px" }}>
-      <h2 style={{ color:C.emerald, marginBottom:4 }}>⚡ New Shorts Job</h2>
+      <h2 style={{ color:C.gold, marginBottom:4, fontFamily:"'Georgia', serif",
+                  fontWeight:400, fontSize:28 }}>New Shorts Job</h2>
       <p style={{ color:C.dim, marginBottom:24 }}>Paste a URL · configure · get viral clips</p>
 
       {err && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
