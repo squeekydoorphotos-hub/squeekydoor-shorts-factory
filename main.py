@@ -102,7 +102,7 @@ FONTS_CONFIG = {
 #  DATABASE
 # ══════════════════════════════════════════════════════════════════
 
-DB_PATH = Path(__file__).parent / "sdp_shorts.db"
+DB_PATH = Path(os.getenv("DB_PATH", "/tmp/sdp_shorts.db"))
 engine  = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
