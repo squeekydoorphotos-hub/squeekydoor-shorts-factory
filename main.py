@@ -77,8 +77,8 @@ ADMIN_EMAILS = {
     "thelabsdp206@gmail.com",
     "squeekydoorphotos@gmail.com",
     "layzphotos@gmail.com",
-    # ADD OWNER 4 EMAIL HERE
-    # ADD OWNER 5 EMAIL HERE
+    "ar.photo.sdp@gmail.com",
+    "wimplobeats@gmail.com",
 }
 
 JOBS_DIR  = Path(tempfile.gettempdir()) / "sdp_jobs"
