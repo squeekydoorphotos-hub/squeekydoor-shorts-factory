@@ -1216,7 +1216,7 @@ function NewJob({ user, setUser, token, onNav }) {
   const [busy,    setBusy]    = useState(false)
   const [err,     setErr]     = useState("")
 
-  const maxClips   = user.is_admin ? 999 : (user.plan === "free" ? 3 : 100)
+  const maxClips   = user.is_admin ? 500 : (user.plan === "free" ? 3 : user.plan === "studio" ? 500 : user.plan === "pro" ? 200 : 100)
   const safeCount  = Math.min(count, maxClips)
   const cost       = Math.round(safeCount * TOKENS_PER_CLIP * 10) / 10
   const canAfford  = user.is_admin || user.tokens >= cost
