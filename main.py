@@ -817,10 +817,6 @@ def process_job(job_id: str, settings: dict):
     Full processing pipeline — runs in FastAPI BackgroundTasks thread.
     Downloads video → picks clips → cuts them → applies features → saves to JOBS_DIR/job_id/
     """
-    from processor import (download_video, pick_clips_claude, pick_clips_evenly,
-                            transcribe, build_ass_content, extract_clip,
-                            smart_reframe, blur_faces_opencv)
-
     log = lambda m: _log_job(job_id, m)
     out_dir = JOBS_DIR / job_id
     out_dir.mkdir(exist_ok=True)
@@ -831,6 +827,10 @@ def process_job(job_id: str, settings: dict):
     log("🚀 Job started")
 
     try:
+        # Import processor functions (inside try so failures are caught)
+        from processor import (download_video, pick_clips_claude, pick_clips_evenly,
+                                build_ass_content, extract_clip,
+                                smart_reframe, blur_faces_opencv)
         # 1. Download video
         log(f"⬇️  Downloading: {settings['source_url']}")
         video_path = download_video(settings["source_url"], str(tmp_dir), log)
@@ -840,20 +840,20 @@ def process_job(job_id: str, settings: dict):
         dur = _ffprobe_duration(video_path)
         log(f"📹 Duration: {dur:.1f}s ({dur/60:.1f} min)")
 
-        # 3. Transcribe if needed
+        # 3. Transcribe if needed (whisper optional)
         segments = []
         if settings.get("ai_pick") or settings.get("subtitles"):
-            log("🎙️  Transcribing audio…")
+            log("🎙️  Attempting transcription…")
             try:
                 import whisper
                 model = whisper.load_model("base")
                 result = model.transcribe(video_path, verbose=False, word_timestamps=True)
                 segments = result.get("segments", [])
-                log(f"✅ {len(segments)} segments")
+                log(f"✅ {len(segments)} transcript segments")
             except ImportError:
-                log("ℹ️  Whisper not installed — skipping transcription")
+                log("ℹ️  Whisper not available — AI will pick by timestamp instead")
             except Exception as e:
-                log(f"⚠️  Transcription failed: {e}")
+                log(f"⚠️  Transcription skipped: {e}")
 
         # 4. Pick clips
         count    = settings.get("clip_count", 10)
