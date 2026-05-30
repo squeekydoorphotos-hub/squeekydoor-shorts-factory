@@ -171,6 +171,7 @@ export default function App() {
 
   return (
     <div style={css.page}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       <Header user={user} onLogout={logout} onNav={setPage} />
       {page==="landing"   && <Landing   onNav={setPage} />}
       {page==="pricing"   && <Pricing   token={token} onNav={setPage} />}
@@ -572,6 +573,7 @@ function Dashboard({ user, setUser, token, onNav }) {
             </>
           )}
         </div>
+        {!user.is_admin && (
         <div style={css.card}>
           <div style={css.sec}>Quick Top-up</div>
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -587,6 +589,7 @@ function Dashboard({ user, setUser, token, onNav }) {
             ))}
           </div>
         </div>
+      )}
       </div>
 
       <div style={{ ...css.card, display:"flex", alignItems:"center",
@@ -625,6 +628,35 @@ function Dashboard({ user, setUser, token, onNav }) {
                 </div>
                 <div style={{ color:C.dim, fontSize:12 }}>{selJob?.id===j.id ? "▲" : "▼"}</div>
               </div>
+              {j.status === "processing" && (
+                <div style={{ marginTop:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between",
+                                fontSize:11, color:C.dim, marginBottom:4,
+                                fontFamily:"Arial,sans-serif" }}>
+                    <span>⚙️ Processing clips…</span>
+                    <span style={{ color:C.gold }}>
+                      {j.clips_count > 0 ? `${j.clips_count} done` : "Starting…"}
+                    </span>
+                  </div>
+                  <div style={{ height:4, background:C.border, borderRadius:2 }}>
+                    <div style={{
+                      height:"100%", borderRadius:2,
+                      background:`linear-gradient(90deg, ${C.emerald}, ${C.gold})`,
+                      width: j.clips_count > 0
+                        ? `${Math.min(95, (j.clips_count / (JSON.parse(j.settings||"{}").clip_count||10)) * 100)}%`
+                        : "8%",
+                      transition:"width 1s ease",
+                      animation: j.clips_count === 0 ? "pulse 1.5s infinite" : "none"
+                    }}/>
+                  </div>
+                </div>
+              )}
+              {j.status === "queued" && (
+                <div style={{ marginTop:6, fontSize:11, color:C.dim,
+                              fontFamily:"Arial,sans-serif" }}>
+                  ⏳ Waiting in queue…
+                </div>
+              )}
 
               {selJob?.id === j.id && (
                 <div style={{ marginTop:12, borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
