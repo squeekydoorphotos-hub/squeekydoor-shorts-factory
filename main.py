@@ -549,6 +549,26 @@ def get_job(job_id: str, user: User = Depends(get_current_user),
     return _job_dict(job)
 
 
+@app.post("/jobs/{job_id}/retry")
+def retry_job(job_id: str, bg: BackgroundTasks,
+              user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    """Re-queue a stuck or failed job without charging tokens again."""
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status not in ("queued", "failed"):
+        raise HTTPException(400, f"Job is {job.status} — only queued or failed jobs can be retried")
+    # Reset status and re-queue
+    job.status     = "queued"
+    job.log        = (job.log or "") + "\n🔄 Retried by user\n"
+    job.updated_at = datetime.utcnow()
+    db.commit()
+    settings = json.loads(job.settings or "{}")
+    bg.add_task(process_job, job.id, settings)
+    return {"ok": True, "job_id": job.id}
+
+
 @app.get("/jobs/{job_id}/clips")
 def list_clips(job_id: str, user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
@@ -966,6 +986,26 @@ def _ffprobe_duration(path: str) -> float:
 async def startup():
     import asyncio
     asyncio.create_task(_cleanup_loop())
+    asyncio.create_task(_recover_stuck_jobs())
+
+
+async def _recover_stuck_jobs():
+    """On startup, re-queue any jobs that were stuck in 'queued' or 'processing'."""
+    import asyncio
+    await asyncio.sleep(5)  # Wait for app to fully start
+    db = _db_session()
+    try:
+        stuck = db.query(Job).filter(Job.status.in_(["queued", "processing"])).all()
+        for job in stuck:
+            settings = json.loads(job.settings or "{}")
+            job.status = "queued"
+            job.log    = (job.log or "") + "\n🔄 Auto-recovered on startup\n"
+            db.commit()
+            import asyncio
+            asyncio.get_event_loop().run_in_executor(None, process_job, job.id, settings)
+            print(f"[Startup] Recovered stuck job {job.id}")
+    finally:
+        db.close()
 
 
 async def _cleanup_loop():
