@@ -98,6 +98,7 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "socket_timeout": 30,
         "retries": 5,
         "fragment_retries": 5,
+        "ffmpeg_location": os.path.dirname(FFMPEG),
     }
 
     if cookie_file:
@@ -431,6 +432,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
