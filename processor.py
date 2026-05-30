@@ -8,6 +8,68 @@ from pathlib import Path
 from typing import Optional
 
 
+def _find_bin(name: str) -> str:
+    """Find a binary in common locations including nix store."""
+    import shutil as _shutil
+    # Check PATH first
+    found = _shutil.which(name)
+    if found:
+        return found
+    # Common nix/Railway paths
+    candidates = [
+        f"/nix/var/nix/profiles/default/bin/{name}",
+        f"/root/.nix-profile/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/usr/bin/{name}",
+        f"/bin/{name}",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    # Last resort: search nix store
+    try:
+        r = subprocess.run(["find", "/nix/store", "-name", name, "-type", "f"],
+                           capture_output=True, text=True, timeout=10)
+        hits = [l for l in r.stdout.strip().split("\n") if l and "/bin/" in l]
+        if hits:
+            return hits[0]
+    except:
+        pass
+    return name  # Fall back to name and let it fail with a clear error
+
+
+FFMPEG  = _find_bin("ffmpeg")
+FFPROBE = _find_bin("ffprobe")
+
+# Find ffmpeg/ffprobe — Railway/Nix installs them in non-standard paths
+def _find_bin(name: str) -> str:
+    """Find binary in PATH or common Nix/Railway locations."""
+    found = shutil.which(name)
+    if found:
+        return found
+    # Common Nix store paths on Railway
+    search_paths = [
+        f"/nix/var/nix/profiles/default/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/usr/bin/{name}",
+        f"/bin/{name}",
+    ]
+    for p in search_paths:
+        if Path(p).exists():
+            return p
+    # Try finding via 'which' shell command
+    try:
+        r = subprocess.run(["which", name], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except:
+        pass
+    return name  # Fall back to just the name and hope PATH works
+
+FFMPEG  = _find_bin("ffmpeg")
+FFPROBE = _find_bin("ffprobe")
+
+
 # ══════════════════════════════════════════════════════════════════
 #  DOWNLOAD
 # ══════════════════════════════════════════════════════════════════
@@ -203,7 +265,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             with open(ass_path, "w", encoding="utf-8") as f:
                 f.write(ass_content)
 
-        cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", video, "-t", str(dur)]
+        cmd = [FFMPEG, "-y", "-ss", str(start), "-i", video, "-t", str(dur)]
         vf, af = [], []
 
         if vert:
@@ -287,7 +349,7 @@ def smart_reframe(input_path: str, output_path: str,
     cap.release(); writer.release()
     log_fn(f"   🎯 Reframe: face tracked in {tracked} frames")
 
-    cmd = ["ffmpeg", "-y", "-i", tmp, "-i", input_path,
+    cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
            "-c:a", "aac", "-b:a", "128k", output_path]
@@ -341,7 +403,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     cap.release(); writer.release()
     log_fn(f"   👁️  Blurred {blurred} face instances")
 
-    cmd = ["ffmpeg", "-y", "-i", tmp, "-i", input_path,
+    cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
            "-c:a", "aac", "-b:a", "128k", output_path]
