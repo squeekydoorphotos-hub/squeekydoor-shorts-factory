@@ -899,16 +899,37 @@ def process_job(job_id: str, settings: dict):
         saved_meta = []
         for i, clip in enumerate(clips[:total], 1):
             s = float(clip.get("start", 0))
-            e = min(float(clip.get("end", s + clip_len)), dur)
+            e = float(clip.get("end", s + clip_len))
+
+            # Enforce requested clip length — center the viral moment in the window
+            actual_len = e - s
+            if actual_len < clip_len:
+                # Extend to fill the full requested duration
+                # Try to extend equally on both sides of the viral moment
+                mid    = (s + e) / 2
+                s      = max(0, mid - clip_len / 2)
+                e      = s + clip_len
+                # If we hit the end of video, back up
+                if e > dur:
+                    e = dur
+                    s = max(0, dur - clip_len)
+            elif actual_len > clip_len * 1.15:
+                # If Claude picked something too long, trim to target from the start
+                e = s + clip_len
+
+            # Final clamp to video bounds
+            s = max(0, min(s, dur - 1))
+            e = min(e, dur)
+
             if e - s < 1:
-                log(f"⚠️  Clip {i} too short, skip"); continue
+                log(f"⚠️  Clip {i} too short after adjustment, skip"); continue
+
+            log(f"✂️  Clip {i}/{total}: {s:.1f}s → {e:.1f}s ({e-s:.0f}s) | targeting {clip_len}s")
 
             hook = clip.get("hook", f"Clip {i}")
             safe = "".join(c if c.isalnum() or c in " _-" else ""
                            for c in hook)[:40].strip().replace(" ", "_")
             stem = f"clip_{i:02d}_{safe}"
-
-            log(f"✂️  Clip {i}/{total}: {s:.1f}s → {e:.1f}s | {hook}")
 
             # Build subtitles
             ass = None
