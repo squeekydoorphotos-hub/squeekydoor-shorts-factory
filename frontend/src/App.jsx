@@ -200,10 +200,18 @@ function Header({ user, onLogout, onNav }) {
       <span style={{ flex:1 }}/>
       {user ? (
         <>
+          {user.is_admin && (
+            <div style={{ background:"#C9A44322", borderRadius:2, padding:"4px 14px",
+                          fontSize:11, color:C.gold, fontWeight:700, letterSpacing:2,
+                          textTransform:"uppercase", border:`1px solid ${C.gold}`,
+                          fontFamily:"Arial, sans-serif" }}>
+              ★ ADMIN · NO LIMITS
+            </div>
+          )}
           <div style={{ background:C.field, borderRadius:20, padding:"4px 14px",
                         fontSize:13, color:C.gold, fontWeight:700, display:"flex",
                         alignItems:"center", gap:6 }}>
-            ⚡ {user.tokens} tokens
+            ⚡ {user.is_admin ? "∞" : user.tokens} tokens
           </div>
           <button style={css.btn(C.emerald)} onClick={() => onNav("new")}>+ New Job</button>
           <button style={css.btn(C.field, C.dim)} onClick={() => onNav("dashboard")}>Dashboard</button>
@@ -449,7 +457,7 @@ function Login({ onLogin, onNav }) {
   const go = async (email, pass) => {
     try {
       const r = await apiFetch("/auth/login",{method:"POST",body:JSON.stringify({email,password:pass})})
-      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan})
+      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false})
     } catch(e) { setErr(e.message) }
   }
   return <AuthForm title="Welcome Back" submitLabel="Login" onSubmit={go} onNav={onNav}
@@ -461,7 +469,7 @@ function Register({ onLogin, onNav }) {
   const go = async (email, pass) => {
     try {
       const r = await apiFetch("/auth/register",{method:"POST",body:JSON.stringify({email,password:pass})})
-      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan})
+      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false})
     } catch(e) { setErr(e.message) }
   }
   return <AuthForm title="Create Account" sub="5 free tokens — no credit card"
@@ -520,9 +528,11 @@ function Dashboard({ user, setUser, token, onNav }) {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16, marginBottom:24 }}>
         <div style={css.card}>
           <div style={css.sec}>Token Balance</div>
-          <div style={{ fontSize:42, fontWeight:900, color:C.gold }}>{user.tokens}</div>
+          <div style={{ fontSize:42, fontWeight:900, color:C.gold }}>
+            {user.is_admin ? "∞" : user.tokens}
+          </div>
           <div style={{ color:C.dim, fontSize:13 }}>
-            ≈ {Math.floor(user.tokens / TOKENS_PER_CLIP)} clips remaining
+            {user.is_admin ? "Unlimited clips" : `≈ ${Math.floor(user.tokens / TOKENS_PER_CLIP)} clips remaining`}
           </div>
           {user.next_free_job_at && (
             <div style={{ marginTop:8, color:C.orange, fontSize:12 }}>
@@ -530,19 +540,37 @@ function Dashboard({ user, setUser, token, onNav }) {
             </div>
           )}
         </div>
-        <div style={css.card}>
+        <div style={{ ...css.card, border: user.is_admin ? `1px solid ${C.gold}` : `1px solid ${C.border}` }}>
           <div style={css.sec}>Plan</div>
-          <div style={{ fontSize:24, fontWeight:700, color:C.emerald,
-                        textTransform:"capitalize" }}>{user.plan}</div>
-          {user.plan === "free" && (
-            <div style={{ color:C.dim, fontSize:13, marginTop:4 }}>
-              1 video/week · max 3 clips
-            </div>
+          {user.is_admin ? (
+            <>
+              <div style={{ fontSize:22, fontWeight:700, color:C.gold,
+                            fontFamily:"'Georgia', serif" }}>Admin</div>
+              <div style={{ color:C.emerald, fontSize:13, marginTop:4, fontFamily:"Arial,sans-serif" }}>
+                ✓ No token limits
+              </div>
+              <div style={{ color:C.emerald, fontSize:13, fontFamily:"Arial,sans-serif" }}>
+                ✓ No clip limits
+              </div>
+              <div style={{ color:C.emerald, fontSize:13, fontFamily:"Arial,sans-serif" }}>
+                ✓ No weekly restrictions
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize:24, fontWeight:700, color:C.emerald,
+                            textTransform:"capitalize" }}>{user.plan}</div>
+              {user.plan === "free" && (
+                <div style={{ color:C.dim, fontSize:13, marginTop:4 }}>
+                  1 video/week · max 3 clips
+                </div>
+              )}
+              <button style={{ ...css.btn(C.field, C.text), marginTop:8, fontSize:12 }}
+                      onClick={() => onNav("pricing")}>
+                Upgrade →
+              </button>
+            </>
           )}
-          <button style={{ ...css.btn(C.field, C.text), marginTop:8, fontSize:12 }}
-                  onClick={() => onNav("pricing")}>
-            Upgrade →
-          </button>
         </div>
         <div style={css.card}>
           <div style={css.sec}>Quick Top-up</div>
@@ -688,10 +716,10 @@ function NewJob({ user, setUser, token, onNav }) {
   const [busy,    setBusy]    = useState(false)
   const [err,     setErr]     = useState("")
 
-  const maxClips   = user.plan === "free" ? 3 : 100
+  const maxClips   = user.is_admin ? 999 : (user.plan === "free" ? 3 : 100)
   const safeCount  = Math.min(count, maxClips)
   const cost       = Math.round(safeCount * TOKENS_PER_CLIP * 10) / 10
-  const canAfford  = user.tokens >= cost
+  const canAfford  = user.is_admin || user.tokens >= cost
 
   const submit = async () => {
     if (!url.trim()) { setErr("Paste a video URL first"); return }
@@ -783,10 +811,24 @@ function NewJob({ user, setUser, token, onNav }) {
       </div>
 
       {/* Token Estimator */}
-      <div style={{ marginBottom:16 }}>
-        <TokenEstimator clipCount={safeCount} userTokens={user.tokens}
-                        plan={user.plan} nextFreeJobAt={user.next_free_job_at} />
-      </div>
+      {user.is_admin ? (
+        <div style={{ marginBottom:16, background:"#C9A44315",
+                      border:`1px solid ${C.gold}40`, borderRadius:4,
+                      padding:"14px 16px", fontFamily:"Arial,sans-serif" }}>
+          <div style={{ color:C.gold, fontWeight:700, fontSize:12,
+                        letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>
+            ★ Admin Access
+          </div>
+          <div style={{ color:C.dim, fontSize:13 }}>
+            No tokens will be deducted · No clip limits · No restrictions
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom:16 }}>
+          <TokenEstimator clipCount={safeCount} userTokens={user.tokens}
+                          plan={user.plan} nextFreeJobAt={user.next_free_job_at} />
+        </div>
+      )}
 
       {/* Submit */}
       <div style={{ display:"flex", gap:12 }}>
