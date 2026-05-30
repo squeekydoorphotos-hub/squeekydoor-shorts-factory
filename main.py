@@ -95,6 +95,26 @@ FONTS_DIR = Path(__file__).parent / "fonts"
 JOBS_DIR.mkdir(exist_ok=True)
 FONTS_DIR.mkdir(exist_ok=True)
 
+# Find ffmpeg/ffprobe — Railway/Nix puts them in non-standard paths
+def _find_bin(name: str) -> str:
+    found = shutil.which(name)
+    if found:
+        return found
+    for p in [f"/nix/var/nix/profiles/default/bin/{name}",
+              f"/usr/local/bin/{name}", f"/usr/bin/{name}", f"/bin/{name}"]:
+        if Path(p).exists():
+            return p
+    try:
+        r = subprocess.run(["which", name], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except:
+        pass
+    return name
+
+FFMPEG_BIN  = _find_bin("ffmpeg")
+FFPROBE_BIN = _find_bin("ffprobe")
+
 # Subscription plans
 PLANS = {
     # Slightly cheaper than Opus Clip ($19/$49/$99)
@@ -1017,7 +1037,7 @@ def _ffprobe_duration(path: str) -> float:
     # Method 2: ffprobe format duration
     try:
         r = subprocess.run(
-            ["ffprobe","-v","quiet","-print_format","json",
+            [FFPROBE_BIN,"-v","quiet","-print_format","json",
              "-show_format","-show_streams", path],
             capture_output=True, text=True, timeout=30)
         import json as _json
@@ -1036,7 +1056,7 @@ def _ffprobe_duration(path: str) -> float:
     # Method 3: ffprobe simple
     try:
         r = subprocess.run(
-            ["ffprobe","-v","error","-select_streams","v:0",
+            [FFPROBE_BIN,"-v","error","-select_streams","v:0",
              "-show_entries","stream=duration",
              "-of","default=noprint_wrappers=1:nokey=1", path],
             capture_output=True, text=True, timeout=30)
@@ -1056,6 +1076,8 @@ def _ffprobe_duration(path: str) -> float:
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_cleanup_loop())
+    print(f"[Startup] ffmpeg: {FFMPEG_BIN}")
+    print(f"[Startup] ffprobe: {FFPROBE_BIN}")
 
 
 async def _cleanup_loop():
