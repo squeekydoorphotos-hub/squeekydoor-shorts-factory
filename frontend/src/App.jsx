@@ -731,6 +731,14 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
     apiFetch("/jobs",{},token).then(setJobs).catch(console.error)
   },[token])
 
+  const retryJob = async (jobId, e) => {
+    e.stopPropagation()
+    try {
+      await apiFetch(`/jobs/${jobId}/retry`, {method:"POST"}, token)
+      fetchJobs()
+    } catch(err) { alert(err.message) }
+  }
+
   useEffect(() => {
     setLoading(false); fetchJobs()
     const id = setInterval(fetchJobs, 5000)
@@ -870,6 +878,13 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                                    padding:"4px 12px", letterSpacing:1 }}
                           onClick={e => { e.stopPropagation(); onViewClips(j.id) }}>
                     🎬 Pick Clips
+                  </button>
+                )}
+                {(j.status === "queued" || j.status === "failed") && (
+                  <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11,
+                                   padding:"4px 12px", letterSpacing:1 }}
+                          onClick={e => retryJob(j.id, e)}>
+                    ▶ Start
                   </button>
                 )}
                 <div style={{ color:C.dim, fontSize:11 }}>
