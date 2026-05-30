@@ -56,43 +56,58 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         elif d.get("status") == "finished":
             log_fn(f"  ✅ {Path(d['filename']).name}")
 
+    # Write YouTube cookies from env var to a temp file if provided
+    cookie_file = None
+    yt_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if yt_cookies:
+        import tempfile as _tf
+        cf = _tf.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+        cf.write(yt_cookies)
+        cf.close()
+        cookie_file = cf.name
+        log_fn("🍪 Using YouTube cookies")
+
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
         "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
-        # Use tv_embedded + ios — bypass YouTube bot detection on datacenter IPs
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv_embedded", "ios", "mweb"],
-                "player_skip": ["webpage", "configs", "js"],
+                "player_client": ["tv_embedded", "ios", "web"],
             }
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
         "socket_timeout": 30,
         "retries": 5,
         "fragment_retries": 5,
-        "age_limit": None,
-        "compat_opts": set(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info  = ydl.extract_info(url, download=True)
-        fname = ydl.prepare_filename(info)
-        if not os.path.exists(fname):
-            fname = str(Path(fname).with_suffix(".mp4"))
-        # Store duration from yt-dlp metadata alongside the file
-        dur = info.get("duration", 0) or 0
-        try:
-            dur_file = str(Path(fname).with_suffix(".duration"))
-            with open(dur_file, "w") as f:
-                f.write(str(dur))
-        except:
-            pass
-        return fname
+
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info  = ydl.extract_info(url, download=True)
+            fname = ydl.prepare_filename(info)
+            if not os.path.exists(fname):
+                fname = str(Path(fname).with_suffix(".mp4"))
+            # Store duration from yt-dlp metadata alongside the file
+            dur = info.get("duration", 0) or 0
+            try:
+                dur_file = str(Path(fname).with_suffix(".duration"))
+                with open(dur_file, "w") as f:
+                    f.write(str(dur))
+            except:
+                pass
+            return fname
+    finally:
+        if cookie_file:
+            try: os.remove(cookie_file)
+            except: pass
 
 
 # ══════════════════════════════════════════════════════════════════
