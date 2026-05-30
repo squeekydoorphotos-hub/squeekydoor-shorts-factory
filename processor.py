@@ -62,15 +62,22 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
-        # YouTube 403 bypass
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        # Use tv_embedded + ios — bypass YouTube bot detection on datacenter IPs
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "ios", "mweb"],
+                "player_skip": ["webpage", "configs", "js"],
+            }
+        },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             "Accept-Language": "en-US,en;q=0.9",
         },
         "socket_timeout": 30,
         "retries": 5,
         "fragment_retries": 5,
+        "age_limit": None,
+        "compat_opts": set(),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info  = ydl.extract_info(url, download=True)
