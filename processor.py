@@ -46,6 +46,81 @@ FFPROBE = _find_bin("ffprobe")
 #  DOWNLOAD
 # ══════════════════════════════════════════════════════════════════
 
+# Invidious instances — fallback when YouTube blocks direct download
+INVIDIOUS_INSTANCES = [
+    "https://inv.nadeko.net",
+    "https://yewtu.be",
+    "https://invidious.nerdvpn.de",
+    "https://invidious.privacyredirect.com",
+]
+
+
+def _extract_video_id(url: str) -> str:
+    import re
+    m = re.search(r"(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else ""
+
+
+def _download_via_invidious(video_id: str, out_dir: str, log_fn) -> str:
+    """Fallback: grab stream URLs from Invidious and download with ffmpeg."""
+    import urllib.request as _ur, json as _json
+
+    log_fn("🔄 Trying Invidious fallback…")
+    api_data = None
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            req = _ur.Request(
+                f"{instance}/api/v1/videos/{video_id}?fields=title,lengthSeconds,adaptiveFormats,formatStreams",
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with _ur.urlopen(req, timeout=15) as r:
+                api_data = _json.loads(r.read())
+            log_fn(f"  ✅ Metadata from {instance}")
+            break
+        except Exception as ex:
+            log_fn(f"  ⚠️  {instance}: {ex}")
+
+    if not api_data:
+        raise RuntimeError("All Invidious instances failed — cannot download video")
+
+    title    = api_data.get("title", video_id)[:60]
+    duration = api_data.get("lengthSeconds", 0)
+    safe     = "".join(c if c.isalnum() or c in " _-" else "" for c in title).strip()
+    out_path = str(Path(out_dir) / f"{safe}.mp4")
+
+    # Prefer combined mp4 stream (no muxing needed)
+    streams = [s for s in api_data.get("formatStreams", []) if s.get("container") == "mp4"]
+    if streams:
+        best = max(streams, key=lambda s: int(s.get("bitrate", 0)))
+        log_fn("  ⬇️  Downloading combined stream…")
+        cmd = [FFMPEG, "-y", "-i", best["url"], "-c", "copy", out_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"ffmpeg download failed: {r.stderr[-300:]}")
+    else:
+        # Adaptive: best video + best audio, mux together
+        adaptive = api_data.get("adaptiveFormats", [])
+        vid = next((s for s in adaptive if "video/mp4" in s.get("type", "") and s.get("url")), None)
+        aud = next((s for s in adaptive if "audio/" in s.get("type", "") and s.get("url")), None)
+        if not vid or not aud:
+            raise RuntimeError("No usable streams found on Invidious")
+        log_fn("  🎬 Muxing video + audio…")
+        cmd = [FFMPEG, "-y", "-i", vid["url"], "-i", aud["url"],
+               "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", out_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"ffmpeg mux failed: {r.stderr[-300:]}")
+
+    try:
+        with open(str(Path(out_path).with_suffix(".duration")), "w") as f:
+            f.write(str(duration))
+    except:
+        pass
+
+    log_fn(f"  ✅ {Path(out_path).name}")
+    return out_path
+
+
 def download_video(url: str, out_dir: str, log_fn) -> str:
     import yt_dlp
 
@@ -95,7 +170,6 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             fname = ydl.prepare_filename(info)
             if not os.path.exists(fname):
                 fname = str(Path(fname).with_suffix(".mp4"))
-            # Store duration from yt-dlp metadata alongside the file
             dur = info.get("duration", 0) or 0
             try:
                 dur_file = str(Path(fname).with_suffix(".duration"))
@@ -104,6 +178,13 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             except:
                 pass
             return fname
+    except Exception as _e:
+        _msg = str(_e)
+        if "Sign in" in _msg or "bot" in _msg.lower() or "cookies" in _msg.lower():
+            video_id = _extract_video_id(url)
+            if video_id:
+                return _download_via_invidious(video_id, out_dir, log_fn)
+        raise
     finally:
         if cookie_file:
             try: os.remove(cookie_file)
@@ -406,3 +487,4 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
