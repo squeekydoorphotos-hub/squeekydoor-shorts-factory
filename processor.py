@@ -41,34 +41,6 @@ def _find_bin(name: str) -> str:
 FFMPEG  = _find_bin("ffmpeg")
 FFPROBE = _find_bin("ffprobe")
 
-# Find ffmpeg/ffprobe — Railway/Nix installs them in non-standard paths
-def _find_bin(name: str) -> str:
-    """Find binary in PATH or common Nix/Railway locations."""
-    found = shutil.which(name)
-    if found:
-        return found
-    # Common Nix store paths on Railway
-    search_paths = [
-        f"/nix/var/nix/profiles/default/bin/{name}",
-        f"/usr/local/bin/{name}",
-        f"/usr/bin/{name}",
-        f"/bin/{name}",
-    ]
-    for p in search_paths:
-        if Path(p).exists():
-            return p
-    # Try finding via 'which' shell command
-    try:
-        r = subprocess.run(["which", name], capture_output=True, text=True)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except:
-        pass
-    return name  # Fall back to just the name and hope PATH works
-
-FFMPEG  = _find_bin("ffmpeg")
-FFPROBE = _find_bin("ffprobe")
-
 
 # ══════════════════════════════════════════════════════════════════
 #  DOWNLOAD
@@ -146,7 +118,7 @@ def pick_clips_claude(segments, count, clip_len, api_key, log_fn):
         f"Sort by virality_score descending. Return ONLY JSON, no other text."
     )
     client = anthropic.Anthropic(api_key=api_key)
-    resp   = client.messages.create(model="claude-sonnet-4-20250514",
+    resp   = client.messages.create(model="claude-sonnet-4-6",
                                      max_tokens=4096,
                                      messages=[{"role":"user","content":prompt}])
     raw = resp.content[0].text.strip()
