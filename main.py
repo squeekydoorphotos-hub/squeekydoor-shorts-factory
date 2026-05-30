@@ -383,6 +383,10 @@ class JobCreateIn(BaseModel):
     face_blur: bool = False
     audio_norm: bool = True
 
+    class Config:
+        # Allow up to 500 clips for admin/paid users
+        pass
+
 class TopupIn(BaseModel):
     pack: str       # small / medium / large
     provider: str   # stripe / paypal
@@ -842,7 +846,13 @@ def process_job(job_id: str, settings: dict):
 
         # 2. Get duration
         dur = _ffprobe_duration(video_path)
-        log(f"📹 Duration: {dur:.1f}s ({dur/60:.1f} min)")
+        if dur <= 0:
+            # Last resort: use file size to estimate (rough: ~1MB per 10s for 720p)
+            fsize = Path(video_path).stat().st_size
+            dur = max(30.0, fsize / 150000)
+            log(f"📹 Duration estimated: {dur:.1f}s (ffprobe couldn't read metadata)")
+        else:
+            log(f"📹 Duration: {dur:.1f}s ({dur/60:.1f} min)")
 
         # 3. Transcribe if needed (whisper optional)
         segments = []
@@ -890,7 +900,7 @@ def process_job(job_id: str, settings: dict):
         for i, clip in enumerate(clips[:total], 1):
             s = float(clip.get("start", 0))
             e = min(float(clip.get("end", s + clip_len)), dur)
-            if e - s < 3:
+            if e - s < 1:
                 log(f"⚠️  Clip {i} too short, skip"); continue
 
             hook = clip.get("hook", f"Clip {i}")
@@ -972,14 +982,50 @@ def process_job(job_id: str, settings: dict):
 
 
 def _ffprobe_duration(path: str) -> float:
+    """Try multiple methods to get video duration."""
+    # Method 1: check yt-dlp duration file saved alongside video
+    try:
+        dur_file = str(Path(path).with_suffix(".duration"))
+        if Path(dur_file).exists():
+            val = float(Path(dur_file).read_text().strip())
+            if val > 0:
+                return val
+    except:
+        pass
+
+    # Method 2: ffprobe format duration
     try:
         r = subprocess.run(
-            ["ffprobe","-v","error","-show_entries","format=duration",
+            ["ffprobe","-v","quiet","-print_format","json",
+             "-show_format","-show_streams", path],
+            capture_output=True, text=True, timeout=30)
+        import json as _json
+        data = _json.loads(r.stdout)
+        dur = float(data.get("format", {}).get("duration", 0) or 0)
+        if dur > 0:
+            return dur
+        # Try streams
+        for s in data.get("streams", []):
+            dur = float(s.get("duration", 0) or 0)
+            if dur > 0:
+                return dur
+    except:
+        pass
+
+    # Method 3: ffprobe simple
+    try:
+        r = subprocess.run(
+            ["ffprobe","-v","error","-select_streams","v:0",
+             "-show_entries","stream=duration",
              "-of","default=noprint_wrappers=1:nokey=1", path],
             capture_output=True, text=True, timeout=30)
-        return float(r.stdout.strip())
+        val = float(r.stdout.strip())
+        if val > 0:
+            return val
     except:
-        return 0.0
+        pass
+
+    return 0.0
 
 
 # ══════════════════════════════════════════════════════════════════
