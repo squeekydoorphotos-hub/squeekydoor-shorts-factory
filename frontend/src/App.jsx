@@ -167,6 +167,14 @@ export default function App() {
       setPage("dashboard")
       window.history.replaceState({}, "", window.location.pathname)
     }
+    // Handle email verification link
+    if (p.get("verify")) {
+      setPage("verify")
+    }
+    // Handle password reset link
+    if (p.get("reset")) {
+      setPage("reset")
+    }
   }, [token])
 
   return (
@@ -179,6 +187,10 @@ export default function App() {
       {page==="register"  && <Register  onLogin={login} onNav={setPage} />}
       {page==="dashboard" && user && <Dashboard user={user} setUser={setUser} token={token} onNav={setPage} />}
       {page==="new"       && user && <NewJob    user={user} setUser={setUser} token={token} onNav={setPage} />}
+      {page==="verify"    && <VerifyEmail onNav={setPage} />}
+      {page==="forgot"    && <ForgotPassword onNav={setPage} />}
+      {page==="reset"     && <ResetPassword onNav={setPage} />}
+      {page==="check-email" && <CheckEmail onNav={setPage} />}
     </div>
   )
 }
@@ -461,8 +473,18 @@ function Login({ onLogin, onNav }) {
       onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false})
     } catch(e) { setErr(e.message) }
   }
-  return <AuthForm title="Welcome Back" submitLabel="Login" onSubmit={go} onNav={onNav}
-                   altText="No account?" altPage="register" altLabel="Sign up free" error={err} />
+  return (
+    <>
+      <AuthForm title="Welcome Back" submitLabel="Login" onSubmit={go} onNav={onNav}
+                altText="No account?" altPage="register" altLabel="Sign up free" error={err} />
+      <div style={{ textAlign:"center", marginTop:-24, paddingBottom:40 }}>
+        <span style={{ color:C.dim, fontSize:12, cursor:"pointer", fontFamily:"Arial,sans-serif" }}
+              onClick={() => onNav("forgot")}>
+          Forgot your password?
+        </span>
+      </div>
+    </>
+  )
 }
 
 function Register({ onLogin, onNav }) {
@@ -470,12 +492,230 @@ function Register({ onLogin, onNav }) {
   const go = async (email, pass) => {
     try {
       const r = await apiFetch("/auth/register",{method:"POST",body:JSON.stringify({email,password:pass})})
-      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false})
+      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false,email_verified:r.email_verified})
+      // Show "check your email" nudge (non-blocking — they can still use the app)
+      if (!r.email_verified) onNav("check-email")
     } catch(e) { setErr(e.message) }
   }
   return <AuthForm title="Create Account" sub="5 free tokens — no credit card"
                    submitLabel="Sign Up Free" onSubmit={go} onNav={onNav}
                    altText="Have an account?" altPage="login" altLabel="Login" error={err} />
+}
+
+
+// ── CHECK EMAIL PAGE ──────────────────────────────────────────────
+function CheckEmail({ onNav }) {
+  return (
+    <div style={{ maxWidth:440, margin:"80px auto", padding:"0 24px", textAlign:"center" }}>
+      <div style={css.card}>
+        <div style={{ fontSize:40, marginBottom:16 }}>📬</div>
+        <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400,
+                     marginBottom:12 }}>Check your email</h2>
+        <p style={{ color:C.dim, fontSize:14, lineHeight:1.7,
+                    fontFamily:"Arial,sans-serif", marginBottom:20 }}>
+          We sent a verification link to your email address.<br/>
+          Click it to confirm your account and you're all set!
+        </p>
+        <div style={{ background:C.field, borderRadius:4, padding:"12px 16px",
+                      fontSize:12, color:C.dim, fontFamily:"Arial,sans-serif",
+                      marginBottom:20, border:`1px solid ${C.border}` }}>
+          ℹ️ You can still use the app while waiting — verification just keeps your account secure.
+        </div>
+        <button style={{ ...css.btn(C.emerald, C.dark), width:"100%", padding:"12px" }}
+                onClick={() => onNav("dashboard")}>
+          Go to Dashboard
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── VERIFY EMAIL PAGE ─────────────────────────────────────────────
+function VerifyEmail({ onNav }) {
+  const [status, setStatus] = useState("verifying")
+  const [msg,    setMsg]    = useState("")
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("verify")
+    if (!token) { setStatus("error"); setMsg("Invalid link"); return }
+    apiFetch(`/auth/verify?token=${token}`)
+      .then(() => {
+        setStatus("success")
+        window.history.replaceState({}, "", window.location.pathname)
+      })
+      .catch(e => { setStatus("error"); setMsg(e.message) })
+  }, [])
+
+  return (
+    <div style={{ maxWidth:440, margin:"80px auto", padding:"0 24px", textAlign:"center" }}>
+      <div style={css.card}>
+        {status === "verifying" && (
+          <>
+            <div style={{ fontSize:36, marginBottom:12 }}>⏳</div>
+            <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400 }}>Verifying…</h2>
+          </>
+        )}
+        {status === "success" && (
+          <>
+            <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
+            <h2 style={{ color:C.emerald, fontFamily:"'Georgia',serif",
+                         fontWeight:400, marginBottom:12 }}>Email verified!</h2>
+            <p style={{ color:C.dim, fontSize:14, fontFamily:"Arial,sans-serif",
+                        marginBottom:20 }}>
+              Your account is confirmed. Welcome to SDP Shorts!
+            </p>
+            <button style={{ ...css.btn(C.emerald, C.dark), width:"100%", padding:"12px" }}
+                    onClick={() => onNav("login")}>Log In</button>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <div style={{ fontSize:36, marginBottom:12 }}>❌</div>
+            <h2 style={{ color:C.red, fontFamily:"'Georgia',serif",
+                         fontWeight:400, marginBottom:12 }}>Link invalid</h2>
+            <p style={{ color:C.dim, fontSize:14, fontFamily:"Arial,sans-serif",
+                        marginBottom:20 }}>{msg || "This link has expired or already been used."}</p>
+            <button style={{ ...css.btn(C.field, C.text), width:"100%", padding:"12px" }}
+                    onClick={() => onNav("register")}>Sign up again</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── FORGOT PASSWORD PAGE ──────────────────────────────────────────
+function ForgotPassword({ onNav }) {
+  const [email,  setEmail]  = useState("")
+  const [sent,   setSent]   = useState(false)
+  const [busy,   setBusy]   = useState(false)
+  const [err,    setErr]    = useState("")
+
+  const go = async () => {
+    if (!email.trim()) { setErr("Enter your email address"); return }
+    setBusy(true); setErr("")
+    try {
+      await apiFetch("/auth/forgot", { method:"POST", body:JSON.stringify({email}) })
+      setSent(true)
+    } catch(e) { setErr(e.message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ maxWidth:400, margin:"80px auto", padding:"0 24px" }}>
+      <div style={css.card}>
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ color:C.gold, fontWeight:700, fontSize:18,
+                        fontFamily:"'Georgia',serif", letterSpacing:2,
+                        textTransform:"uppercase", marginBottom:4 }}>SDP SHORTS</div>
+          <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400 }}>
+            {sent ? "Email sent!" : "Forgot password?"}
+          </h2>
+        </div>
+        {sent ? (
+          <>
+            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>📬</div>
+            <p style={{ color:C.dim, fontSize:14, textAlign:"center", lineHeight:1.7,
+                        fontFamily:"Arial,sans-serif", marginBottom:20 }}>
+              If that email is registered, we sent a reset link.<br/>Check your inbox!
+            </p>
+            <button style={{ ...css.btn(C.field, C.text), width:"100%", padding:"12px" }}
+                    onClick={() => onNav("login")}>Back to Login</button>
+          </>
+        ) : (
+          <>
+            {err && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
+                                  borderRadius:4, padding:"10px 14px", color:C.red,
+                                  fontSize:13, marginBottom:16 }}>{err}</div>}
+            <label style={css.label}>Email address</label>
+            <input style={{ ...css.input, marginBottom:20 }} type="email" value={email}
+                   onChange={e => setEmail(e.target.value)}
+                   onKeyDown={e => e.key === "Enter" && go()}
+                   placeholder="your@email.com" />
+            <button style={{ ...css.btn(C.emerald, C.dark), width:"100%",
+                             padding:"12px", opacity:busy?.6:1 }}
+                    onClick={go} disabled={busy}>
+              {busy ? "Sending…" : "Send Reset Link"}
+            </button>
+            <div style={{ textAlign:"center", marginTop:16, fontSize:13, color:C.dim }}>
+              <span style={{ color:C.emerald, cursor:"pointer" }}
+                    onClick={() => onNav("login")}>← Back to Login</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── RESET PASSWORD PAGE ───────────────────────────────────────────
+function ResetPassword({ onNav }) {
+  const [pass,   setPass]   = useState("")
+  const [pass2,  setPass2]  = useState("")
+  const [done,   setDone]   = useState(false)
+  const [busy,   setBusy]   = useState(false)
+  const [err,    setErr]    = useState("")
+  const token = new URLSearchParams(window.location.search).get("reset") || ""
+
+  const go = async () => {
+    if (pass.length < 8) { setErr("Password must be at least 8 characters"); return }
+    if (pass !== pass2)  { setErr("Passwords don't match"); return }
+    setBusy(true); setErr("")
+    try {
+      await apiFetch("/auth/reset", { method:"POST", body:JSON.stringify({token, password:pass}) })
+      setDone(true)
+      window.history.replaceState({}, "", window.location.pathname)
+    } catch(e) { setErr(e.message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ maxWidth:400, margin:"80px auto", padding:"0 24px" }}>
+      <div style={css.card}>
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ color:C.gold, fontWeight:700, fontSize:18,
+                        fontFamily:"'Georgia',serif", letterSpacing:2,
+                        textTransform:"uppercase", marginBottom:4 }}>SDP SHORTS</div>
+          <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400 }}>
+            {done ? "Password updated!" : "Set new password"}
+          </h2>
+        </div>
+        {done ? (
+          <>
+            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>✅</div>
+            <p style={{ color:C.dim, fontSize:14, textAlign:"center",
+                        fontFamily:"Arial,sans-serif", marginBottom:20 }}>
+              Your password has been reset. Log in with your new password!
+            </p>
+            <button style={{ ...css.btn(C.emerald, C.dark), width:"100%", padding:"12px" }}
+                    onClick={() => onNav("login")}>Log In</button>
+          </>
+        ) : (
+          <>
+            {!token && <div style={{ color:C.red, fontSize:13, marginBottom:16,
+                                     fontFamily:"Arial,sans-serif" }}>
+              ⚠️ Invalid reset link — please request a new one.
+            </div>}
+            {err && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
+                                  borderRadius:4, padding:"10px 14px", color:C.red,
+                                  fontSize:13, marginBottom:16 }}>{err}</div>}
+            <label style={css.label}>New password</label>
+            <input style={{ ...css.input, marginBottom:12 }} type="password" value={pass}
+                   onChange={e => setPass(e.target.value)} placeholder="At least 8 characters" />
+            <label style={css.label}>Confirm new password</label>
+            <input style={{ ...css.input, marginBottom:20 }} type="password" value={pass2}
+                   onChange={e => setPass2(e.target.value)}
+                   onKeyDown={e => e.key === "Enter" && go()} />
+            <button style={{ ...css.btn(C.emerald, C.dark), width:"100%",
+                             padding:"12px", opacity:busy?.6:1 }}
+                    onClick={go} disabled={busy || !token}>
+              {busy ? "Updating…" : "Set New Password"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────
