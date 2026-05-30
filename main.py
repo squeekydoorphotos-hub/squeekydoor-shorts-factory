@@ -159,9 +159,10 @@ class Job(Base):
     status      = Column(String, default="queued")   # queued/processing/done/failed
     source_url  = Column(String, nullable=True)
     settings    = Column(Text, default="{}")          # JSON blob
-    clips_count = Column(Integer, default=0)
-    log         = Column(Text, default="")
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    clips_count    = Column(Integer, default=0)
+    clips_metadata = Column(Text, default="[]")  # JSON array of clip info
+    log            = Column(Text, default="")
+    created_at     = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user        = relationship("User", back_populates="jobs")
 
@@ -578,8 +579,23 @@ def _job_dict(j: Job) -> dict:
     if job_dir.exists():
         clips = [{"filename": p.name, "url": f"/jobs/{j.id}/download/{p.name}"}
                  for p in sorted(job_dir.glob("*.mp4"))]
+    # Parse clip metadata (virality scores, hooks, etc.)
+    try:
+        clips_meta = json.loads(j.clips_metadata or "[]")
+    except:
+        clips_meta = []
+    # Merge metadata with file list
+    for clip in clips:
+        stem = clip["filename"].replace(".mp4", "")
+        meta = next((m for m in clips_meta if m.get("filename","") == clip["filename"]), {})
+        clip.update(meta)
+    # Calculate expiry (48h from updated_at)
+    expires_at = None
+    if j.updated_at and j.status == "done":
+        expires_at = (j.updated_at + timedelta(hours=48)).isoformat()
     return {"id": j.id, "status": j.status, "clips_count": j.clips_count,
-            "log": j.log, "clips": clips,
+            "clips_metadata": clips_meta, "settings": j.settings,
+            "log": j.log, "clips": clips, "expires_at": expires_at,
             "created_at": j.created_at, "updated_at": j.updated_at}
 
 # ══════════════════════════════════════════════════════════════════
@@ -764,6 +780,18 @@ def _set_job_status(job_id: str, status: str, clips_count: int = None):
         db.close()
 
 
+def _save_clip_metadata(job_id: str, meta_list: list):
+    """Save clip metadata (scores, hooks, tags) to the job record."""
+    db = _db_session()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.clips_metadata = json.dumps(meta_list)
+            db.commit()
+    finally:
+        db.close()
+
+
 def process_job(job_id: str, settings: dict):
     """
     Full processing pipeline — runs in FastAPI BackgroundTasks thread.
@@ -834,6 +862,7 @@ def process_job(job_id: str, settings: dict):
         font_name = settings.get("subtitle_font", "Arial")
         font_path = ensure_font(font_name)
 
+        saved_meta = []
         for i, clip in enumerate(clips[:total], 1):
             s = float(clip.get("start", 0))
             e = min(float(clip.get("end", s + clip_len)), dur)
@@ -891,6 +920,19 @@ def process_job(job_id: str, settings: dict):
 
                 made += 1
                 log(f"   ✅ Done")
+                # Save clip metadata for the picker page
+                for path in paths:
+                    fname = Path(path).name
+                    saved_meta.append({
+                        "filename": fname,
+                        "score": clip.get("score", 0),
+                        "tag": clip.get("tag", ""),
+                        "hook": hook,
+                        "start": round(s, 1),
+                        "end": round(e, 1),
+                        "duration": round(e - s, 1),
+                    })
+                _save_clip_metadata(job_id, saved_meta)
             except Exception as ex:
                 log(f"   ❌ Failed: {ex}")
 
