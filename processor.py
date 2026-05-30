@@ -56,44 +56,7 @@ def _extract_video_id(url: str) -> str:
     return m.group(1) if m else ""
 
 
-def _download_via_cobalt(url: str, out_dir: str, log_fn) -> str:
-    """Fallback: use cobalt.tools public API to get a direct download stream."""
-    import urllib.request as _ur, json as _json, uuid as _uuid
 
-    log_fn("🔄 Trying cobalt.tools fallback…")
-    payload = _json.dumps({"url": url, "videoQuality": "1080"}).encode()
-    req = _ur.Request(
-        "https://api.cobalt.tools/",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "SDP-Shorts/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with _ur.urlopen(req, timeout=20) as r:
-            data = _json.loads(r.read())
-    except Exception as e:
-        raise RuntimeError(f"cobalt.tools API error: {e}")
-
-    status = data.get("status")
-    if status not in ("redirect", "tunnel", "stream"):
-        raise RuntimeError(f"cobalt.tools returned status={status!r}: {data.get('error', {}).get('code','unknown')}")
-
-    stream_url = data.get("url")
-    filename   = data.get("filename", f"video_{_uuid.uuid4().hex[:8]}.mp4")
-    out_path   = str(Path(out_dir) / Path(filename).stem[:60]) + ".mp4"
-
-    log_fn(f"  ⬇️  Downloading via cobalt stream…")
-    cmd = [FFMPEG, "-y", "-i", stream_url, "-c", "copy", out_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if r.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {r.stderr[-300:]}")
-
-    log_fn(f"  ✅ {Path(out_path).name}")
-    return out_path
 
 
 def download_video(url: str, out_dir: str, log_fn) -> str:
@@ -125,7 +88,7 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "progress_hooks": [_hook],
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv_embedded", "ios", "web"],
+                "player_client": ["tv_embedded", "android_creator", "mediaconnect"],
             }
         },
         "http_headers": {
@@ -155,9 +118,16 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             return fname
     except Exception as _e:
         _msg = str(_e)
-        if ("Sign in" in _msg or "bot" in _msg.lower() or
-                "cookies" in _msg.lower() or "format is not available" in _msg.lower()):
-            return _download_via_cobalt(url, out_dir, log_fn)
+        if ("Sign in" in _msg or "bot" in _msg.lower() or "cookies" in _msg.lower()):
+            raise RuntimeError(
+                "YouTube is blocking this download.\n\n"
+                "Fix: add your YouTube cookies to Railway:\n"
+                "1. Install 'Get cookies.txt LOCALLY' Chrome extension\n"
+                "2. Go to youtube.com (logged in) → click extension → Export\n"
+                "3. Railway dashboard → your backend service → Variables\n"
+                "4. Add variable: YOUTUBE_COOKIES = <paste full cookie file contents>\n"
+                "5. Railway redeploys automatically — retry the job"
+            )
         raise
     finally:
         if cookie_file:
@@ -461,6 +431,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
