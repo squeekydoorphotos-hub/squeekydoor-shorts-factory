@@ -139,9 +139,10 @@ function TokenEstimator({ clipCount, userTokens, plan, nextFreeJobAt }) {
 // ══════════════════════════════════════════════════════════════════
 
 export default function App() {
-  const [token, setToken] = useState(() => localStorage.getItem("sdp_token") || "")
-  const [user,  setUser]  = useState(null)
-  const [page,  setPage]  = useState("landing")
+  const [token,       setToken]       = useState(() => localStorage.getItem("sdp_token") || "")
+  const [user,        setUser]        = useState(null)
+  const [page,        setPage]        = useState("landing")
+  const [selectedJob, setSelectedJob] = useState(null)
 
   const login = (tok, userData) => {
     localStorage.setItem("sdp_token", tok)
@@ -185,9 +186,10 @@ export default function App() {
       {page==="pricing"   && <Pricing   token={token} onNav={setPage} />}
       {page==="login"     && <Login     onLogin={login} onNav={setPage} />}
       {page==="register"  && <Register  onLogin={login} onNav={setPage} />}
-      {page==="dashboard" && user && <Dashboard user={user} setUser={setUser} token={token} onNav={setPage} />}
+      {page==="dashboard" && user && <Dashboard user={user} setUser={setUser} token={token} onNav={setPage} onViewClips={(jobId) => { setSelectedJob(jobId); setPage("clips") }} />}
       {page==="new"       && user && <NewJob    user={user} setUser={setUser} token={token} onNav={setPage} />}
       {page==="verify"    && <VerifyEmail onNav={setPage} />}
+      {page==="clips"     && <ClipPicker jobId={selectedJob} token={token} onNav={setPage} />}
       {page==="forgot"    && <ForgotPassword onNav={setPage} />}
       {page==="reset"     && <ResetPassword onNav={setPage} />}
       {page==="check-email" && <CheckEmail onNav={setPage} />}
@@ -720,7 +722,7 @@ function ResetPassword({ onNav }) {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────
 
-function Dashboard({ user, setUser, token, onNav }) {
+function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   const [jobs,    setJobs]    = useState([])
   const [selJob,  setSelJob]  = useState(null)
   const [loading, setLoading] = useState(true)
@@ -863,6 +865,13 @@ function Dashboard({ user, setUser, token, onNav }) {
                 <div style={{ color:sCol(j.status), fontSize:12,
                               fontWeight:700, textTransform:"uppercase" }}>{j.status}</div>
                 <div style={{ color:C.dim, fontSize:12 }}>{j.clips_count} clips</div>
+                {j.status === "done" && j.clips_count > 0 && (
+                  <button style={{ ...css.btn(C.gold, C.dark), fontSize:11,
+                                   padding:"4px 12px", letterSpacing:1 }}
+                          onClick={e => { e.stopPropagation(); onViewClips(j.id) }}>
+                    🎬 Pick Clips
+                  </button>
+                )}
                 <div style={{ color:C.dim, fontSize:11 }}>
                   {new Date(j.created_at).toLocaleDateString()}
                 </div>
@@ -928,6 +937,210 @@ function Dashboard({ user, setUser, token, onNav }) {
           ))}
         </div>
        )}
+    </div>
+  )
+}
+
+
+// ── CLIP PICKER ───────────────────────────────────────────────────
+function ClipPicker({ jobId, token, onNav }) {
+  const [job,      setJob]      = useState(null)
+  const [loading,  setLoading]  = useState(true)
+  const [selected, setSelected] = useState(new Set())
+  const [timeLeft, setTimeLeft] = useState("")
+
+  useEffect(() => {
+    if (!jobId) { onNav("dashboard"); return }
+    apiFetch(`/jobs/${jobId}`, {}, token)
+      .then(j => { setJob(j); setLoading(false) })
+      .catch(() => { onNav("dashboard") })
+  }, [jobId])
+
+  // Countdown timer to expiry
+  useEffect(() => {
+    if (!job?.expires_at) return
+    const tick = () => {
+      const diff = new Date(job.expires_at) - new Date()
+      if (diff <= 0) { setTimeLeft("Expired"); return }
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      setTimeLeft(`${h}h ${m}m remaining`)
+    }
+    tick()
+    const id = setInterval(tick, 60000)
+    return () => clearInterval(id)
+  }, [job])
+
+  if (loading) return (
+    <div style={{ textAlign:"center", padding:80, color:C.dim }}>Loading clips…</div>
+  )
+
+  // Sort clips by score descending
+  const clips = [...(job?.clips || [])].sort((a, b) => (b.score||0) - (a.score||0))
+  const scoreCol = s => s >= 85 ? C.emerald : s >= 70 ? C.gold : s >= 55 ? C.orange : C.dim
+  const scoreIcon = s => s >= 85 ? "🔥" : s >= 70 ? "⚡" : s >= 55 ? "✨" : "💤"
+
+  const toggleSelect = (fn) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(fn) ? next.delete(fn) : next.add(fn)
+      return next
+    })
+  }
+
+  const selectAll = () => setSelected(new Set(clips.map(c => c.filename)))
+  const clearAll  = () => setSelected(new Set())
+
+  const downloadClip = (clip) => {
+    const a = document.createElement("a")
+    a.href = `${API}${clip.url}`
+    a.download = clip.filename
+    a.click()
+  }
+
+  const downloadSelected = () => {
+    clips.filter(c => selected.has(c.filename)).forEach((c, i) => {
+      setTimeout(() => downloadClip(c), i * 500)
+    })
+  }
+
+  return (
+    <div style={{ maxWidth:900, margin:"0 auto", padding:"32px 24px" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
+        <button style={{ ...css.btn(C.field, C.dim), fontSize:12, padding:"6px 14px" }}
+                onClick={() => onNav("dashboard")}>← Dashboard</button>
+        <div style={{ flex:1 }}>
+          <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400,
+                       fontSize:24, margin:0 }}>Your Clips</h2>
+          <div style={{ color:C.dim, fontSize:12, fontFamily:"Arial,sans-serif", marginTop:2 }}>
+            {clips.length} clips · Sorted by virality score
+          </div>
+        </div>
+        {timeLeft && (
+          <div style={{ background: timeLeft === "Expired" ? "#CC444420" : "#C9A44315",
+                        border: `1px solid ${timeLeft === "Expired" ? C.red : C.gold}40`,
+                        borderRadius:4, padding:"6px 14px", fontSize:12,
+                        color: timeLeft === "Expired" ? C.red : C.gold,
+                        fontFamily:"Arial,sans-serif" }}>
+            ⏱ {timeLeft}
+          </div>
+        )}
+      </div>
+
+      {/* Bulk actions */}
+      {clips.length > 0 && (
+        <div style={{ ...css.card, display:"flex", alignItems:"center", gap:12,
+                      marginBottom:20, padding:"14px 20px",
+                      border:`1px solid ${C.border}` }}>
+          <span style={{ color:C.dim, fontSize:13, fontFamily:"Arial,sans-serif", flex:1 }}>
+            {selected.size > 0 ? `${selected.size} clip${selected.size>1?"s":""} selected` : "Select clips to download"}
+          </span>
+          <button style={{ ...css.btn(C.field, C.dim), fontSize:11, padding:"5px 12px" }}
+                  onClick={selectAll}>Select All</button>
+          {selected.size > 0 && (
+            <>
+              <button style={{ ...css.btn(C.field, C.dim), fontSize:11, padding:"5px 12px" }}
+                      onClick={clearAll}>Clear</button>
+              <button style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"5px 16px" }}
+                      onClick={downloadSelected}>
+                ⬇️ Download {selected.size} Selected
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Clip cards */}
+      {clips.length === 0 ? (
+        <div style={{ ...css.card, textAlign:"center", padding:48, color:C.dim }}>
+          No clips found for this job.
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {clips.map((clip, idx) => {
+            const sel = selected.has(clip.filename)
+            const sc  = clip.score || 0
+            const col = scoreCol(sc)
+            return (
+              <div key={clip.filename}
+                   onClick={() => toggleSelect(clip.filename)}
+                   style={{ ...css.card, cursor:"pointer",
+                            border: sel ? `1px solid ${C.gold}` : `1px solid ${C.border}`,
+                            background: sel ? "#C9A44308" : C.card,
+                            transition:"all .15s" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                  {/* Rank */}
+                  <div style={{ color:C.dim, fontSize:13, fontWeight:700,
+                                minWidth:20, textAlign:"center",
+                                fontFamily:"Arial,sans-serif" }}>
+                    #{idx + 1}
+                  </div>
+
+                  {/* Score badge */}
+                  {sc > 0 && (
+                    <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0,
+                                  background:`${col}18`, border:`1px solid ${col}50`,
+                                  borderRadius:20, padding:"4px 12px" }}>
+                      <span style={{ fontSize:14 }}>{scoreIcon(sc)}</span>
+                      <span style={{ color:col, fontWeight:900, fontSize:16,
+                                     fontFamily:"Arial,sans-serif" }}>{sc}</span>
+                      {clip.tag && (
+                        <span style={{ color:col, fontSize:11, fontWeight:600,
+                                       fontFamily:"Arial,sans-serif" }}>{clip.tag}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Hook + time */}
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:C.text, fontSize:14 }}>
+                      {clip.hook || clip.filename.replace(".mp4","").replace(/_/g," ")}
+                    </div>
+                    {clip.start !== undefined && (
+                      <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif",
+                                    marginTop:2 }}>
+                        {Math.floor(clip.start/60)}:{String(Math.round(clip.start%60)).padStart(2,"0")}
+                        {" – "}
+                        {Math.floor(clip.end/60)}:{String(Math.round(clip.end%60)).padStart(2,"0")}
+                        {" · "}
+                        {clip.duration}s
+                      </div>
+                    )}
+                    <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif",
+                                  marginTop:2 }}>
+                      {clip.filename}
+                    </div>
+                  </div>
+
+                  {/* Select checkbox */}
+                  <div style={{ width:20, height:20, borderRadius:3, flexShrink:0,
+                                border:`2px solid ${sel ? C.gold : C.border}`,
+                                background: sel ? C.gold : "transparent",
+                                display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {sel && <span style={{ color:C.dark, fontSize:13, fontWeight:900 }}>✓</span>}
+                  </div>
+
+                  {/* Download single */}
+                  <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11,
+                                   padding:"6px 14px", flexShrink:0 }}
+                          onClick={e => { e.stopPropagation(); downloadClip(clip) }}>
+                    ⬇️ Download
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Bottom CTA */}
+      {clips.length > 0 && (
+        <div style={{ textAlign:"center", marginTop:28, color:C.dim,
+                      fontSize:12, fontFamily:"Arial,sans-serif" }}>
+          Clips auto-delete 48 hours after processing · Make a new job any time
+        </div>
+      )}
     </div>
   )
 }
