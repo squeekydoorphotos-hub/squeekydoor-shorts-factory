@@ -266,7 +266,13 @@ def ensure_font(font_name: str) -> Optional[str]:
 app = FastAPI(title="SDP Shorts Web API", version="1.0.0")
 
 app.add_middleware(CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        FRONTEND_URL,
+        "https://spd-shorts-factory.netlify.app",
+        "https://shorts.squeekydoorproductions.com",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # ══════════════════════════════════════════════════════════════════
