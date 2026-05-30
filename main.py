@@ -47,6 +47,10 @@ from passlib.context import CryptContext
 import stripe
 import requests as http_req
 from dotenv import load_dotenv
+import smtplib
+import secrets
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 load_dotenv()
 
@@ -60,6 +64,11 @@ TOKEN_EXP_HOURS = 24 * 7   # 1 week JWT
 
 CLAUDE_API_KEY  = os.getenv("CLAUDE_API_KEY", "")
 FRONTEND_URL    = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# ── Email config ──────────────────────────────────────────────────
+EMAIL_FROM    = os.getenv("EMAIL_FROM", "squeekydoorphotos@gmail.com")
+EMAIL_PASS    = os.getenv("EMAIL_APP_PASS", "")
+EMAIL_ENABLED = bool(EMAIL_PASS)
 
 stripe.api_key  = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK  = os.getenv("STRIPE_WEBHOOK_SECRET", "")
@@ -133,10 +142,14 @@ class User(Base):
     tokens         = Column(Float,   default=5.0) # free signup bonus (0.5 per clip)
     plan           = Column(String, default="free")
     last_free_job_at = Column(DateTime, nullable=True)  # weekly free job tracking
-    stripe_cust_id = Column(String, nullable=True)
-    stripe_sub_id  = Column(String, nullable=True)
-    created_at     = Column(DateTime, default=datetime.utcnow)
-    jobs           = relationship("Job", back_populates="user")
+    stripe_cust_id  = Column(String, nullable=True)
+    stripe_sub_id   = Column(String, nullable=True)
+    email_verified  = Column(Boolean, default=False)
+    verify_token    = Column(String, nullable=True)
+    reset_token     = Column(String, nullable=True)
+    reset_token_exp = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    jobs            = relationship("Job", back_populates="user")
 
 
 class Job(Base):
@@ -260,6 +273,74 @@ def ensure_font(font_name: str) -> Optional[str]:
     return str(path)
 
 # ══════════════════════════════════════════════════════════════════
+#  EMAIL HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def send_email(to: str, subject: str, html: str):
+    """Send email via Gmail SMTP."""
+    if not EMAIL_ENABLED:
+        print(f"[Email disabled] Would send to {to}: {subject}")
+        return
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"SDP Shorts <{EMAIL_FROM}>"
+        msg["To"]      = to
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(EMAIL_FROM, EMAIL_PASS)
+            s.sendmail(EMAIL_FROM, to, msg.as_string())
+        print(f"[Email] Sent to {to}: {subject}")
+    except Exception as e:
+        print(f"[Email] Failed: {e}")
+
+
+def send_verification_email(email: str, token: str):
+    url = f"{FRONTEND_URL}?verify={token}"
+    send_email(email, "Verify your SDP Shorts account", f"""
+    <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
+      <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
+      <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
+      <h2 style="color:#C9A443;font-weight:400">Verify your account</h2>
+      <p style="color:#888;line-height:1.6">Thanks for signing up! Click below to verify your email and get your 5 free tokens.</p>
+      <a href="{url}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
+        Verify My Account
+      </a>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">Link expires in 24 hours. If you didn't sign up, ignore this email.</p>
+    </div>""")
+
+
+def send_reset_email(email: str, token: str):
+    url = f"{FRONTEND_URL}?reset={token}"
+    send_email(email, "Reset your SDP Shorts password", f"""
+    <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
+      <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
+      <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
+      <h2 style="color:#C9A443;font-weight:400">Reset your password</h2>
+      <p style="color:#888;line-height:1.6">We received a request to reset your password. Click below to choose a new one.</p>
+      <a href="{url}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
+        Reset My Password
+      </a>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">Link expires in 1 hour. If you didn't request this, ignore this email.</p>
+    </div>""")
+
+
+def send_welcome_email(email: str):
+    send_email(email, "Welcome to SDP Shorts!", f"""
+    <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
+      <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
+      <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
+      <h2 style="color:#C9A443;font-weight:400">You're in! 🎬</h2>
+      <p style="color:#888;line-height:1.6">Your account is verified and your <strong style="color:#C9A443">5 free tokens</strong> are ready to use.</p>
+      <p style="color:#888;line-height:1.6">Paste any video URL, let AI pick the viral moments, and download your clips — all within 48 hours before they auto-clear.</p>
+      <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
+        Start Making Shorts
+      </a>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">0.5 tokens per clip · Clips available for 48 hours</p>
+    </div>""")
+
+
+# ══════════════════════════════════════════════════════════════════
 #  APP
 # ══════════════════════════════════════════════════════════════════
 
@@ -322,10 +403,16 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         raise HTTPException(400, "Email already registered")
     if len(data.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
-    user = User(email=data.email, hashed_pw=hash_pw(data.password))
+    verify_tok = secrets.token_urlsafe(32)
+    user = User(email=data.email, hashed_pw=hash_pw(data.password),
+                verify_token=verify_tok, email_verified=False)
     db.add(user); db.commit(); db.refresh(user)
+    # Send verification email (non-blocking)
+    try: send_verification_email(data.email, verify_tok)
+    except: pass
     return {"token": create_jwt(user.id), "tokens": user.tokens, "plan": user.plan,
-            "email": user.email}
+            "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
+            "email_verified": user.email_verified}
 
 
 @app.post("/auth/login")
@@ -334,7 +421,8 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
     if not user or not verify_pw(data.password, user.hashed_pw):
         raise HTTPException(401, "Invalid email or password")
     return {"token": create_jwt(user.id), "tokens": user.tokens, "plan": user.plan,
-            "email": user.email}
+            "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
+            "email_verified": user.email_verified}
 
 
 @app.get("/auth/me")
@@ -350,7 +438,58 @@ def me(user: User = Depends(get_current_user)):
             "plan": user.plan, "created_at": user.created_at,
             "next_free_job_at": next_free,
             "tokens_per_clip": TOKENS_PER_CLIP,
-            "is_admin": user.email in ADMIN_EMAILS}
+            "is_admin": user.email in ADMIN_EMAILS,
+            "email_verified": user.email_verified}
+
+# ── Email verify route ────────────────────────────────────────────
+@app.get("/auth/verify")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.verify_token == token).first()
+    if not user:
+        raise HTTPException(400, "Invalid or expired verification link")
+    user.email_verified = True
+    user.verify_token = None
+    db.commit()
+    send_welcome_email(user.email)
+    return {"ok": True, "email": user.email}
+
+
+class ForgotIn(BaseModel):
+    email: str
+
+class ResetIn(BaseModel):
+    token: str
+    password: str
+
+@app.post("/auth/forgot")
+def forgot_password(data: ForgotIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if user:
+        tok = secrets.token_urlsafe(32)
+        user.reset_token     = tok
+        user.reset_token_exp = datetime.utcnow() + timedelta(hours=1)
+        db.commit()
+        try: send_reset_email(data.email, tok)
+        except: pass
+    # Always return ok so we don't reveal if email exists
+    return {"ok": True}
+
+
+@app.post("/auth/reset")
+def reset_password(data: ResetIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.reset_token == data.token).first()
+    if not user or not user.reset_token_exp:
+        raise HTTPException(400, "Invalid or expired reset link")
+    if datetime.utcnow() > user.reset_token_exp:
+        raise HTTPException(400, "Reset link has expired — request a new one")
+    if len(data.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    user.hashed_pw      = hash_pw(data.password)
+    user.reset_token    = None
+    user.reset_token_exp = None
+    db.commit()
+    return {"ok": True}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  JOB ROUTES
@@ -791,7 +930,7 @@ async def _cleanup_loop():
     import asyncio
     while True:
         await asyncio.sleep(3600)   # run hourly
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.utcnow() - timedelta(hours=48)
         db = _db_session()
         try:
             old_jobs = db.query(Job).filter(Job.updated_at < cutoff,
