@@ -28,7 +28,7 @@ try:
 except Exception:
     pass
 
-import os, uuid, json, shutil, asyncio, tempfile, math, subprocess
+import os, uuid, json, shutil, asyncio, tempfile, math, subprocess, threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
@@ -497,7 +497,7 @@ def reset_password(data: ResetIn, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════
 
 @app.post("/jobs")
-def create_job(data: JobCreateIn, bg: BackgroundTasks,
+def create_job(data: JobCreateIn,
                user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
     cost = round(data.clip_count * TOKENS_PER_CLIP, 1)
@@ -530,7 +530,9 @@ def create_job(data: JobCreateIn, bg: BackgroundTasks,
               settings=json.dumps(data.dict()), clips_count=0)
     db.add(job); db.commit(); db.refresh(job)
 
-    bg.add_task(process_job, job.id, data.dict())
+    # Use thread for reliable background processing
+    t = threading.Thread(target=process_job, args=(job.id, data.dict()), daemon=True)
+    t.start()
     return {"job_id": job.id, "tokens_remaining": user.tokens}
 
 
@@ -550,22 +552,24 @@ def get_job(job_id: str, user: User = Depends(get_current_user),
 
 
 @app.post("/jobs/{job_id}/retry")
-def retry_job(job_id: str, bg: BackgroundTasks,
+def retry_job(job_id: str,
               user: User = Depends(get_current_user),
               db: Session = Depends(get_db)):
     """Re-queue a stuck or failed job without charging tokens again."""
     job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status not in ("queued", "failed"):
-        raise HTTPException(400, f"Job is {job.status} — only queued or failed jobs can be retried")
-    # Reset status and re-queue
-    job.status     = "queued"
-    job.log        = (job.log or "") + "\n🔄 Retried by user\n"
+    if job.status == "processing":
+        raise HTTPException(400, "Job is already processing")
+    # Set to processing immediately so UI updates right away
+    job.status     = "processing"
+    job.log        = (job.log or "") + "\n🔄 Retried — starting now\n"
     job.updated_at = datetime.utcnow()
     db.commit()
     settings = json.loads(job.settings or "{}")
-    bg.add_task(process_job, job.id, settings)
+    # Use a real thread — more reliable than BackgroundTasks for long-running work
+    t = threading.Thread(target=process_job, args=(job.id, settings), daemon=True)
+    t.start()
     return {"ok": True, "job_id": job.id}
 
 
@@ -984,28 +988,7 @@ def _ffprobe_duration(path: str) -> float:
 
 @app.on_event("startup")
 async def startup():
-    import asyncio
     asyncio.create_task(_cleanup_loop())
-    asyncio.create_task(_recover_stuck_jobs())
-
-
-async def _recover_stuck_jobs():
-    """On startup, re-queue any jobs that were stuck in 'queued' or 'processing'."""
-    import asyncio
-    await asyncio.sleep(5)  # Wait for app to fully start
-    db = _db_session()
-    try:
-        stuck = db.query(Job).filter(Job.status.in_(["queued", "processing"])).all()
-        for job in stuck:
-            settings = json.loads(job.settings or "{}")
-            job.status = "queued"
-            job.log    = (job.log or "") + "\n🔄 Auto-recovered on startup\n"
-            db.commit()
-            import asyncio
-            asyncio.get_event_loop().run_in_executor(None, process_job, job.id, settings)
-            print(f"[Startup] Recovered stuck job {job.id}")
-    finally:
-        db.close()
 
 
 async def _cleanup_loop():
