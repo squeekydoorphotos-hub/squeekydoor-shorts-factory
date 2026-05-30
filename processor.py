@@ -43,6 +43,14 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         fname = ydl.prepare_filename(info)
         if not os.path.exists(fname):
             fname = str(Path(fname).with_suffix(".mp4"))
+        # Store duration from yt-dlp metadata alongside the file
+        dur = info.get("duration", 0) or 0
+        try:
+            dur_file = str(Path(fname).with_suffix(".duration"))
+            with open(dur_file, "w") as f:
+                f.write(str(dur))
+        except:
+            pass
         return fname
 
 
