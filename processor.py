@@ -328,7 +328,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             try: os.remove(ass_path)
             except: pass
         if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg: {r.stderr[-300:]}")
+            raise RuntimeError(f"ffmpeg error:\n{r.stderr[:600]}")
         created.append(output)
 
     if both:
@@ -454,6 +454,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
