@@ -98,8 +98,29 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "socket_timeout": 30,
         "retries": 5,
         "fragment_retries": 5,
-        "ffmpeg_location": os.path.dirname(FFMPEG),
     }
+
+    # Resolve ffmpeg at runtime — module-level FFMPEG may be bare name if PATH
+    # wasn't set when the module loaded (common in Railway background threads)
+    ffmpeg_path = FFMPEG
+    if not os.path.isfile(ffmpeg_path):
+        ffmpeg_path = _find_bin("ffmpeg")
+    if not os.path.isfile(ffmpeg_path):
+        # Last resort: find in nix store dynamically
+        try:
+            r = subprocess.run(
+                ["find", "/nix/store", "-name", "ffmpeg", "-type", "f"],
+                capture_output=True, text=True, timeout=15
+            )
+            hits = [l for l in r.stdout.strip().split("\n") if l and "/bin/" in l]
+            if hits:
+                ffmpeg_path = hits[0]
+        except Exception:
+            pass
+    ffmpeg_dir = os.path.dirname(ffmpeg_path) if os.path.isfile(ffmpeg_path) else ""
+    log_fn(f"🔧 ffmpeg: {ffmpeg_path or 'not found'}")
+    if ffmpeg_dir:
+        opts["ffmpeg_location"] = ffmpeg_dir
 
     if cookie_file:
         opts["cookiefile"] = cookie_file
@@ -432,6 +453,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
