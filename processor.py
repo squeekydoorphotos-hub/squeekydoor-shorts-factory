@@ -86,9 +86,10 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
+        # Let yt-dlp auto-select the best working client
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv_embedded", "android_creator", "mediaconnect"],
+                "player_client": ["tv_embedded", "android_creator", "mweb", "web"],
             }
         },
         "http_headers": {
@@ -141,16 +142,11 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             return fname
     except Exception as _e:
         _msg = str(_e)
+        log_fn(f"⚠️  yt-dlp error: {_msg[:300]}")
         if ("Sign in" in _msg or "bot" in _msg.lower() or "cookies" in _msg.lower()):
-            raise RuntimeError(
-                "YouTube is blocking this download.\n\n"
-                "Fix: add your YouTube cookies to Railway:\n"
-                "1. Install 'Get cookies.txt LOCALLY' Chrome extension\n"
-                "2. Go to youtube.com (logged in) → click extension → Export\n"
-                "3. Railway dashboard → your backend service → Variables\n"
-                "4. Add variable: YOUTUBE_COOKIES = <paste full cookie file contents>\n"
-                "5. Railway redeploys automatically — retry the job"
-            )
+            if cookie_file:
+                log_fn("⚠️  Cookies were loaded but YouTube still blocked — cookies may be expired or malformed")
+            raise RuntimeError(f"YouTube blocked download: {_msg[:200]}")
         raise
     finally:
         if cookie_file:
@@ -454,6 +450,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
