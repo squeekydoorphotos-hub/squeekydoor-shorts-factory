@@ -98,8 +98,6 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         "socket_timeout": 60,
         "retries": 5,
         "fragment_retries": 5,
-        # Impersonate a real browser to bypass TLS fingerprint detection
-        "impersonate": "chrome",
     }
 
     # Route through proxy if set — use a residential proxy to avoid datacenter IP blocks
@@ -457,6 +455,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
