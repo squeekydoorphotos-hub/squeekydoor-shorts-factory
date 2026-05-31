@@ -10,4 +10,3 @@ python-dotenv==1.0.1
 pydantic[email]==2.7.1
 anthropic
 yt-dlp
-curl-cffi
