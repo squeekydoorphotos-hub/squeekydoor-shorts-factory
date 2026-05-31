@@ -308,7 +308,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
         vf, af = [], []
 
         if vert:
-            vf.append("crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920")
+            vf.append("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920")
         if ass_path:
             safe = ass_path.replace("\\", "/").replace(":", "\\:")
             vf.append(f"ass='{safe}'")
