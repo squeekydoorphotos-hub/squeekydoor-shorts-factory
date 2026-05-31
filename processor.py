@@ -82,15 +82,11 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+        "format":  "18/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv_embedded", "android_creator", "mweb", "web"],
-            }
-        },
+
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
@@ -455,6 +451,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
