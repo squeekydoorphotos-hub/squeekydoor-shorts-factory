@@ -78,15 +78,14 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         cf.write(yt_cookies)
         cf.close()
         cookie_file = cf.name
-        log_fn("🍪 Using YouTube cookies")
+        log_fn(f"🍪 Using YouTube cookies ({len(yt_cookies.splitlines())} lines)")
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "best[height<=1080][ext=mp4]/best[ext=mp4]/best[height<=1080]/best",
+        "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
-        # Let yt-dlp auto-select the best working client
         "extractor_args": {
             "youtube": {
                 "player_client": ["tv_embedded", "android_creator", "mweb", "web"],
@@ -96,10 +95,18 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
-        "socket_timeout": 30,
+        "socket_timeout": 60,
         "retries": 5,
         "fragment_retries": 5,
+        # Impersonate a real browser to bypass TLS fingerprint detection
+        "impersonate": "chrome",
     }
+
+    # Route through proxy if set — use a residential proxy to avoid datacenter IP blocks
+    proxy = os.environ.get("DOWNLOAD_PROXY", "").strip()
+    if proxy:
+        opts["proxy"] = proxy
+        log_fn(f"🌐 Using proxy: {proxy[:30]}...")
 
     # Resolve ffmpeg at runtime — module-level FFMPEG may be bare name if PATH
     # wasn't set when the module loaded (common in Railway background threads)
@@ -450,6 +457,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
