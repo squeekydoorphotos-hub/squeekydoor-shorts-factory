@@ -318,7 +318,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             af.append("dynaudnorm=f=75:g=25")
         if af: cmd += ["-af", ",".join(af)]
 
-        cmd += ["-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        cmd += ["-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
                 "-c:a", "aac", "-b:a", "128k", output]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if ass_path:
@@ -390,7 +390,7 @@ def smart_reframe(input_path: str, output_path: str,
 
     cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
-           "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+           "-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
            "-c:a", "aac", "-b:a", "128k", output_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try: os.remove(tmp)
@@ -444,7 +444,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
 
     cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
-           "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+           "-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
            "-c:a", "aac", "-b:a", "128k", output_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try: os.remove(tmp)
