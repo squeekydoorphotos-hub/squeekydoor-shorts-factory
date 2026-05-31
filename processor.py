@@ -325,7 +325,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             try: os.remove(ass_path)
             except: pass
         if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg error:\n{r.stderr[:600]}")
+            raise RuntimeError(f"ffmpeg error:\n{r.stderr[-800:]}")
         created.append(output)
 
     if both:
