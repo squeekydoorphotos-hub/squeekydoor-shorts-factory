@@ -8,5 +8,6 @@ stripe==9.9.0
 requests==2.32.3
 python-dotenv==1.0.1
 pydantic[email]==2.7.1
-anthropic==0.28.0
+anthropic
 yt-dlp
+curl-cffi
