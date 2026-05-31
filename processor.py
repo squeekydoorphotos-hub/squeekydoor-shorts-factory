@@ -82,7 +82,7 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+        "format":  "best[height<=1080][ext=mp4]/best[ext=mp4]/best[height<=1080]/best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
@@ -119,6 +119,7 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             pass
     ffmpeg_dir = os.path.dirname(ffmpeg_path) if os.path.isfile(ffmpeg_path) else ""
     log_fn(f"🔧 ffmpeg: {ffmpeg_path or 'not found'}")
+    log_fn(f"🔧 PATH: {os.environ.get('PATH','(unset)')[:120]}")
     if ffmpeg_dir:
         opts["ffmpeg_location"] = ffmpeg_dir
 
@@ -453,6 +454,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
+
 
 
 
