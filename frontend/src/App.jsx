@@ -1119,9 +1119,11 @@ function ClipPicker({ jobId, token, onNav }) {
                     </div>
                   )}
 
-                  {/* Hook + time */}
+                  {/* Title + time */}
                   <div style={{ flex:1 }}>
-                    <div style={{ color:C.text, fontSize:14 }}>
+                    <div style={{ color:C.text, fontSize:16, fontWeight:700,
+                                  lineHeight:1.3, marginBottom:4,
+                                  fontFamily:"'Segoe UI', Arial, sans-serif" }}>
                       {clip.hook || clip.filename.replace(".mp4","").replace(/_/g," ")}
                     </div>
                     {clip.start !== undefined && (
@@ -1134,8 +1136,8 @@ function ClipPicker({ jobId, token, onNav }) {
                         {clip.duration}s
                       </div>
                     )}
-                    <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif",
-                                  marginTop:2 }}>
+                    <div style={{ color:C.dim, fontSize:10, fontFamily:"Arial,sans-serif",
+                                  marginTop:2, opacity:0.6 }}>
                       {clip.filename}
                     </div>
                   </div>
