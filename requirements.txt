@@ -9,5 +9,6 @@ requests==2.32.3
 python-dotenv==1.0.1
 pydantic[email]==2.7.1
 anthropic
+yt-dlp>=2025.1.15
 
 opencv-python-headless
