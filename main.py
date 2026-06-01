@@ -948,7 +948,7 @@ def process_job(job_id: str, settings: dict):
 
             hook = clip.get("hook", f"Clip {i}")
             safe = "".join(c if c.isalnum() or c in " _-" else ""
-                           for c in hook)[:40].strip().replace(" ", "_")
+                           for c in hook)[:60].strip().replace(" ", "_")
             stem = f"clip_{i:02d}_{safe}"
 
             # Build subtitles
