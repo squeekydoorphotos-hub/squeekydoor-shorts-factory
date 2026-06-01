@@ -82,14 +82,14 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "best",
+        "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
-        # Use iOS client — bypasses YouTube PO token requirement for datacenter IPs
-        "extractor_args": {"youtube": {"player_client": ["ios"]}},
+        # web_creator works with browser cookies and no PO token; ios as fallback
+        "extractor_args": {"youtube": {"player_client": ["web_creator", "ios"]}},
         "http_headers": {
-            "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
         "socket_timeout": 60,
