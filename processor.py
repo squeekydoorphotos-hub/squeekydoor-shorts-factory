@@ -176,7 +176,7 @@ def pick_clips_claude(segments, count, clip_len, api_key, log_fn):
         f"short-form video moments (~{clip_len}s each).\n\n"
         f"TRANSCRIPT:\n{text}\n\n"
         f"Return ONLY a JSON array with exactly {count} objects. Each object:\n"
-        f'[{{\n"start": <float seconds>,\n"end": <float seconds>,\n"reason": "<why this moment works>",\n"hook": "<punchy 5-word title>",\n"virality_score": <int 0-100>,\n"virality_tag": "<one of: {", ".join(VIRALITY_TAGS)}>"\n}}]\n\n'
+        f'[{{\n"start": <float seconds>,\n"end": <float seconds>,\n"reason": "<why this moment works>",\n"hook": "<viral social media title, 8-12 words, attention-grabbing, specific to this moment, no generic phrases>",\n"virality_score": <int 0-100>,\n"virality_tag": "<one of: {", ".join(VIRALITY_TAGS)}>"\n}}]\n\n'
         f"virality_score rules:\n"
         f"- 85-100: Exceptional — strong emotion, controversy, or instant hook\n"
         f"- 70-84: Great — clear value, funny, or relatable\n"
