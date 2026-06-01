@@ -572,6 +572,8 @@ function Dashboard({ user, setUser, token, onNav }) {
                 onClick={() => onNav("new")}>⚡ New Job</button>
       </div>
 
+      {user.is_admin && <CookiesAdmin token={token} />}
+
       <div style={css.sec}>Recent Jobs</div>
       {loading ? <div style={{ color:C.dim }}>Loading…</div> :
        jobs.length === 0 ? (
@@ -628,6 +630,140 @@ function Dashboard({ user, setUser, token, onNav }) {
           ))}
         </div>
        )}
+    </div>
+  )
+}
+
+// ── ADMIN: YOUTUBE COOKIES ───────────────────────────────────────
+
+function CookiesAdmin({ token }) {
+  const [status,   setStatus]   = useState(null)   // {exists, lines, size_kb, path}
+  const [text,     setText]     = useState("")
+  const [busy,     setBusy]     = useState(false)
+  const [msg,      setMsg]      = useState("")
+  const [open,     setOpen]     = useState(false)
+
+  const check = () => {
+    apiFetch("/admin/cookies/status", {}, token)
+      .then(setStatus).catch(e => setMsg("Error: " + e.message))
+  }
+
+  useEffect(() => { if (open) check() }, [open])
+
+  const upload = async () => {
+    if (!text.trim()) { setMsg("Paste your cookies.txt content first"); return }
+    setBusy(true); setMsg("")
+    try {
+      const r = await apiFetch("/admin/cookies", {
+        method: "POST", body: JSON.stringify({ content: text.trim() })
+      }, token)
+      setMsg(`✅ Saved ${r.lines} lines (${r.size_kb}KB) to volume`)
+      setText(""); check()
+    } catch(e) { setMsg("❌ " + e.message) }
+    finally { setBusy(false) }
+  }
+
+  const del = async () => {
+    if (!window.confirm("Delete YouTube cookies from the server?")) return
+    setBusy(true)
+    try {
+      await apiFetch("/admin/cookies", { method: "DELETE" }, token)
+      setMsg("🗑️ Cookies deleted"); setStatus(null); check()
+    } catch(e) { setMsg("❌ " + e.message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ ...css.card, marginBottom: 24, border: `1px solid ${C.gold}30` }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                    cursor:"pointer" }} onClick={() => setOpen(o => !o)}>
+        <div>
+          <div style={css.sec}>🍪 YouTube Cookies (Admin)</div>
+          <div style={{ fontSize:12, color:C.dim }}>
+            {status?.exists
+              ? `✅ Loaded — ${status.lines} lines · ${status.size_kb}KB`
+              : status
+                ? "⚠️ No cookies on volume — YouTube may block downloads"
+                : "Click to check status"}
+          </div>
+        </div>
+        <span style={{ color:C.dim, fontSize:18 }}>{open ? "▲" : "▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop:16, borderTop:`1px solid ${C.border}`, paddingTop:16 }}>
+          {/* Status row */}
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
+            {status?.exists ? (
+              <div style={{ flex:1, background:"#4a8c5c20",
+                            border:`1px solid ${C.emerald}40`,
+                            borderRadius:8, padding:"10px 14px" }}>
+                <span style={{ color:C.emerald, fontWeight:700 }}>✅ Cookies active</span>
+                <span style={{ color:C.dim, fontSize:12, marginLeft:12 }}>
+                  {status.lines} lines · {status.size_kb}KB · {status.path}
+                </span>
+              </div>
+            ) : (
+              <div style={{ flex:1, background:"#CC770020",
+                            border:`1px solid ${C.orange}40`,
+                            borderRadius:8, padding:"10px 14px" }}>
+                <span style={{ color:C.orange, fontWeight:700 }}>⚠️ No cookies on server</span>
+                <span style={{ color:C.dim, fontSize:12, marginLeft:12 }}>
+                  YouTube may block or rate-limit downloads
+                </span>
+              </div>
+            )}
+            <button style={{ ...css.btn(C.field, C.dim), fontSize:12 }} onClick={check}>
+              Refresh
+            </button>
+            {status?.exists && (
+              <button style={{ ...css.btn(C.field, "#CC4444"), fontSize:12 }}
+                      onClick={del} disabled={busy}>
+                Delete
+              </button>
+            )}
+          </div>
+
+          {/* How-to */}
+          <div style={{ background:C.field, borderRadius:8, padding:"10px 14px",
+                        marginBottom:12, fontSize:12, color:C.dim,
+                        border:`1px solid ${C.border}` }}>
+            <strong style={{ color:C.gold }}>How to get cookies:</strong>
+            {" "}Install the <strong>"Get cookies.txt LOCALLY"</strong> Chrome extension →
+            go to <strong>youtube.com</strong> while signed in →
+            click the extension → Export → paste the file content below.
+            Refresh cookies every ~30 days when they expire.
+          </div>
+
+          {/* Paste area */}
+          <div style={{ marginBottom:12 }}>
+            <label style={css.label}>Paste cookies.txt content here:</label>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={"# Netscape HTTP Cookie File\n# https://curl.se/docs/http-cookies.html\n.youtube.com\tTRUE\t/\tTRUE\t..."}
+              style={{ ...css.input, height:120, resize:"vertical",
+                       fontFamily:"monospace", fontSize:11 }}
+            />
+          </div>
+
+          {msg && (
+            <div style={{ background: msg.startsWith("✅") ? "#4a8c5c20" : "#CC444420",
+                          border:`1px solid ${msg.startsWith("✅") ? C.emerald : C.red}40`,
+                          borderRadius:8, padding:"8px 12px",
+                          color: msg.startsWith("✅") ? C.emerald : C.red,
+                          fontSize:13, marginBottom:12 }}>
+              {msg}
+            </div>
+          )}
+
+          <button
+            style={{ ...css.btn(C.gold, C.dark), opacity: busy ? 0.6 : 1 }}
+            onClick={upload} disabled={busy || !text.trim()}>
+            {busy ? "Uploading…" : "⬆️ Upload Cookies to Server"}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
