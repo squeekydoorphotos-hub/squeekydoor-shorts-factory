@@ -9,4 +9,4 @@ requests==2.32.3
 python-dotenv==1.0.1
 pydantic[email]==2.7.1
 anthropic
-yt-dlp
+yt-dlp>=2025.1.15
