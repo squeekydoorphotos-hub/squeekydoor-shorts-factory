@@ -69,16 +69,25 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         elif d.get("status") == "finished":
             log_fn(f"  ✅ {Path(d['filename']).name}")
 
-    # Write YouTube cookies from env var to a temp file if provided
+    # Find YouTube cookies — prefer file on persistent volume over env var
     cookie_file = None
-    yt_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if yt_cookies:
-        import tempfile as _tf
-        cf = _tf.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
-        cf.write(yt_cookies)
-        cf.close()
-        cookie_file = cf.name
-        log_fn(f"🍪 Using YouTube cookies ({len(yt_cookies.splitlines())} lines)")
+    _cookies_owned = False  # True if we created a temp file we must delete
+    # Derive cookies path from DB_PATH (same dir = persistent volume)
+    _db_path = os.environ.get("DB_PATH", "/tmp/sdp_shorts.db")
+    _vol_cookies = str(Path(_db_path).parent / "yt_cookies.txt")
+    if Path(_vol_cookies).exists():
+        cookie_file = _vol_cookies
+        log_fn(f"🍪 Using YouTube cookies from volume ({Path(_vol_cookies).stat().st_size // 1024}KB)")
+    else:
+        yt_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
+        if yt_cookies:
+            import tempfile as _tf
+            cf = _tf.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+            cf.write(yt_cookies)
+            cf.close()
+            cookie_file = cf.name
+            _cookies_owned = True
+            log_fn(f"🍪 Using YouTube cookies from env var ({len(yt_cookies.splitlines())} lines)")
 
     proxy = os.environ.get("DOWNLOAD_PROXY", "").strip()
     if proxy:
