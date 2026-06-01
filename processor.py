@@ -82,7 +82,7 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "best[ext=mp4][height<=1080]/best[ext=mp4]/best",
+        "format":  "best",
         "merge_output_format": "mp4",
         "quiet": True, "no_warnings": True,
         "progress_hooks": [_hook],
