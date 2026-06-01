@@ -80,36 +80,15 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         cookie_file = cf.name
         log_fn(f"🍪 Using YouTube cookies ({len(yt_cookies.splitlines())} lines)")
 
-    opts = {
-        "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-        "format":  "best",
-        "merge_output_format": "mp4",
-        "quiet": False, "no_warnings": False,
-        "progress_hooks": [_hook],
-        # mweb = mobile YouTube — accepts browser cookies, bypasses PO token, no OAuth needed
-        "extractor_args": {"youtube": {"player_client": ["mweb", "tv_embedded"]}},
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        },
-        "socket_timeout": 60,
-        "retries": 5,
-        "fragment_retries": 5,
-    }
-
-    # Route through proxy if set — use a residential proxy to avoid datacenter IP blocks
     proxy = os.environ.get("DOWNLOAD_PROXY", "").strip()
     if proxy:
-        opts["proxy"] = proxy
         log_fn(f"🌐 Using proxy: {proxy[:30]}...")
 
-    # Resolve ffmpeg at runtime — module-level FFMPEG may be bare name if PATH
-    # wasn't set when the module loaded (common in Railway background threads)
+    # Resolve ffmpeg at runtime
     ffmpeg_path = FFMPEG
     if not os.path.isfile(ffmpeg_path):
         ffmpeg_path = _find_bin("ffmpeg")
     if not os.path.isfile(ffmpeg_path):
-        # Last resort: find in nix store dynamically
         try:
             r = subprocess.run(
                 ["find", "/nix/store", "-name", "ffmpeg", "-type", "f"],
@@ -123,63 +102,79 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
     ffmpeg_dir = os.path.dirname(ffmpeg_path) if os.path.isfile(ffmpeg_path) else ""
     log_fn(f"🔧 ffmpeg: {ffmpeg_path or 'not found'}")
     log_fn(f"🔧 PATH: {os.environ.get('PATH','(unset)')[:120]}")
-    if ffmpeg_dir:
-        opts["ffmpeg_location"] = ffmpeg_dir
-
-    if cookie_file:
-        opts["cookiefile"] = cookie_file
 
     log_fn(f"🔢 yt-dlp version: {yt_dlp.version.__version__}")
 
-    def _attempt(attempt_opts):
-        with yt_dlp.YoutubeDL(attempt_opts) as ydl:
+    def _base_opts(client: str, use_proxy: bool, use_cookies: bool) -> dict:
+        o = {
+            "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
+            "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+            "merge_output_format": "mp4",
+            "quiet": True, "no_warnings": True,
+            "progress_hooks": [_hook],
+            "extractor_args": {"youtube": {"player_client": [client]}},
+            "socket_timeout": 60,
+            "retries": 3,
+            "fragment_retries": 3,
+        }
+        if ffmpeg_dir:
+            o["ffmpeg_location"] = ffmpeg_dir
+        if use_proxy and proxy:
+            o["proxy"] = proxy
+        if use_cookies and cookie_file:
+            o["cookiefile"] = cookie_file
+        return o
+
+    def _attempt(opts):
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info  = ydl.extract_info(url, download=True)
             fname = ydl.prepare_filename(info)
             if not os.path.exists(fname):
                 fname = str(Path(fname).with_suffix(".mp4"))
             dur = info.get("duration", 0) or 0
             try:
-                dur_file = str(Path(fname).with_suffix(".duration"))
-                with open(dur_file, "w") as f:
+                with open(str(Path(fname).with_suffix(".duration")), "w") as f:
                     f.write(str(dur))
             except:
                 pass
             return fname
 
-    def _list_formats():
-        list_opts = {**opts, "listformats": True, "simulate": True}
-        try:
-            with yt_dlp.YoutubeDL(list_opts) as ydl:
-                ydl.extract_info(url, download=False)
-        except Exception as le:
-            log_fn(f"📋 Format list error: {str(le)[:200]}")
+    # Strategy ladder — try each in order, stop on first success
+    # android: no PO token needed, works for public videos, uses DASH (high quality)
+    # mweb: mobile web, accepts browser cookies
+    # tv_embedded: embedded TV client, bypasses some restrictions
+    strategies = [
+        ("android",     True,  False, "android + proxy"),
+        ("android",     False, False, "android no-proxy"),
+        ("mweb",        True,  True,  "mweb + proxy + cookies"),
+        ("mweb",        False, True,  "mweb no-proxy + cookies"),
+        ("tv_embedded", True,  True,  "tv_embedded + proxy + cookies"),
+        ("tv_embedded", False, True,  "tv_embedded no-proxy + cookies"),
+    ]
 
-    try:
-        return _attempt(opts)
-    except Exception as _e:
-        _msg = str(_e)
-        log_fn(f"⚠️  yt-dlp error: {_msg[:300]}")
-        # Log available formats to help debug
-        if "format" in _msg.lower():
-            log_fn("📋 Listing available formats...")
-            _list_formats()
-        if ("Sign in" in _msg or "bot" in _msg.lower() or "cookies" in _msg.lower()):
+    last_err = None
+    for client, use_proxy, use_cookies, label in strategies:
+        if use_proxy and not proxy:
+            continue  # skip proxy strategies if no proxy configured
+        if use_cookies and not cookie_file:
+            continue  # skip cookie strategies if no cookies configured
+        log_fn(f"🔄 Trying: {label}")
+        try:
+            result = _attempt(_base_opts(client, use_proxy, use_cookies))
+            log_fn(f"✅ Download succeeded via {label}")
             if cookie_file:
-                log_fn("⚠️  Cookies were loaded but YouTube still blocked — cookies may be expired or malformed")
-            raise RuntimeError(f"YouTube blocked download: {_msg[:200]}")
-        # If proxy-related or format error, retry without proxy
-        if opts.get("proxy") and ("format" in _msg.lower() or "403" in _msg or "forbidden" in _msg.lower()):
-            log_fn("🔄 Retrying WITHOUT proxy...")
-            no_proxy_opts = {k: v for k, v in opts.items() if k != "proxy"}
-            try:
-                return _attempt(no_proxy_opts)
-            except Exception as _e2:
-                log_fn(f"⚠️  No-proxy attempt also failed: {str(_e2)[:200]}")
-        raise
-    finally:
-        if cookie_file:
-            try: os.remove(cookie_file)
-            except: pass
+                try: os.remove(cookie_file)
+                except: pass
+            return result
+        except Exception as e:
+            msg = str(e)
+            log_fn(f"   ✗ {label} failed: {msg[:150]}")
+            last_err = e
+
+    if cookie_file:
+        try: os.remove(cookie_file)
+        except: pass
+    raise RuntimeError(f"All download strategies failed. Last error: {str(last_err)[:300]}")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -308,7 +303,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
 # ══════════════════════════════════════════════════════════════════
 #  CLIP EXTRACTION
-# ══════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════
 
 def extract_clip(video: str, start: float, end: float, out_path: str,
                  vertical: bool, both: bool,
@@ -478,15 +473,3 @@ def blur_faces_opencv(input_path: str, output_path: str,
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"blur: {r.stderr[-300:]}")
-
-
-
-
-
-
-
-
-
-
-
-
