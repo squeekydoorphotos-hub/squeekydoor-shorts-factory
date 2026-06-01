@@ -128,8 +128,11 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
 
     if cookie_file:
         opts["cookiefile"] = cookie_file
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+
+    log_fn(f"🔢 yt-dlp version: {yt_dlp.version.__version__}")
+
+    def _attempt(attempt_opts):
+        with yt_dlp.YoutubeDL(attempt_opts) as ydl:
             info  = ydl.extract_info(url, download=True)
             fname = ydl.prepare_filename(info)
             if not os.path.exists(fname):
@@ -142,13 +145,36 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             except:
                 pass
             return fname
+
+    def _list_formats():
+        list_opts = {**opts, "listformats": True, "simulate": True}
+        try:
+            with yt_dlp.YoutubeDL(list_opts) as ydl:
+                ydl.extract_info(url, download=False)
+        except Exception as le:
+            log_fn(f"📋 Format list error: {str(le)[:200]}")
+
+    try:
+        return _attempt(opts)
     except Exception as _e:
         _msg = str(_e)
         log_fn(f"⚠️  yt-dlp error: {_msg[:300]}")
+        # Log available formats to help debug
+        if "format" in _msg.lower():
+            log_fn("📋 Listing available formats...")
+            _list_formats()
         if ("Sign in" in _msg or "bot" in _msg.lower() or "cookies" in _msg.lower()):
             if cookie_file:
                 log_fn("⚠️  Cookies were loaded but YouTube still blocked — cookies may be expired or malformed")
             raise RuntimeError(f"YouTube blocked download: {_msg[:200]}")
+        # If proxy-related or format error, retry without proxy
+        if opts.get("proxy") and ("format" in _msg.lower() or "403" in _msg or "forbidden" in _msg.lower()):
+            log_fn("🔄 Retrying WITHOUT proxy...")
+            no_proxy_opts = {k: v for k, v in opts.items() if k != "proxy"}
+            try:
+                return _attempt(no_proxy_opts)
+            except Exception as _e2:
+                log_fn(f"⚠️  No-proxy attempt also failed: {str(_e2)[:200]}")
         raise
     finally:
         if cookie_file:
