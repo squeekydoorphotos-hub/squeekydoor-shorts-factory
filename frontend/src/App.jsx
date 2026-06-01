@@ -43,6 +43,21 @@ function apiFetch(path, opts={}, token=null) {
     .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || "Error") }))
 }
 
+async function downloadWithAuth(url, filename, token) {
+  const res = await fetch(url, {
+    headers: { "Authorization": `Bearer ${token}` }
+  })
+  const blob = await res.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = blobUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(blobUrl)
+}
+
 // ── VIRALITY SCORE badge ───────────────────────────────────────────
 function ViralityBadge({ score, tag }) {
   if (!score && score !== 0) return null
@@ -936,12 +951,12 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                       <div style={css.sec}>Download Clips</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                         {j.clips.map(c => (
-                          <a key={c.filename} href={`${API}${c.url}`}
-                             download={c.filename}
-                             style={{ ...css.btn(C.field, C.emerald), textDecoration:"none",
+                          <button key={c.filename}
+                             onClick={() => downloadWithAuth(`${API}${c.url}`, c.filename, token)}
+                             style={{ ...css.btn(C.field, C.emerald),
                                       fontSize:12, border:`1px solid ${C.emerald}30` }}>
                             ⬇️ {c.filename.slice(0,28)}…
-                          </a>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1007,10 +1022,7 @@ function ClipPicker({ jobId, token, onNav }) {
   const clearAll  = () => setSelected(new Set())
 
   const downloadClip = (clip) => {
-    const a = document.createElement("a")
-    a.href = `${API}${clip.url}`
-    a.download = clip.filename
-    a.click()
+    downloadWithAuth(`${API}${clip.url}`, clip.filename, token)
   }
 
   const downloadSelected = () => {
