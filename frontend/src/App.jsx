@@ -1022,7 +1022,7 @@ function ClipPicker({ jobId, token, onNav }) {
   const clearAll  = () => setSelected(new Set())
 
   const downloadClip = (clip) => {
-    downloadWithAuth(`${API}${clip.url}`, clip.filename, token)
+    downloadWithAuth(`${API}${clip.url}`, clip.hook ? clip.hook.replace(/[^a-zA-Z0-9 ]/g,'').trim().replace(/ +/g,'_').slice(0,80)+'.mp4' : clip.filename, token)
   }
 
   const downloadSelected = () => {
