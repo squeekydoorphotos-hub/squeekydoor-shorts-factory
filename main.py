@@ -583,8 +583,6 @@ def retry_job(job_id: str,
     job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status == "processing":
-        raise HTTPException(400, "Job is already processing")
     # Set to processing immediately so UI updates right away
     job.status     = "processing"
     job.log        = (job.log or "") + "\n🔄 Retried — starting now\n"
@@ -1076,6 +1074,18 @@ def _ffprobe_duration(path: str) -> float:
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_cleanup_loop())
+    # Mark any stuck "processing" jobs as failed on restart
+    db = _db_session()
+    try:
+        stuck = db.query(Job).filter(Job.status == "processing").all()
+        for j in stuck:
+            j.status = "failed"
+            j.log = (j.log or "") + "\n⚠️ Marked failed on restart\n"
+        if stuck:
+            db.commit()
+            print(f"[Startup] Marked {len(stuck)} stuck jobs as failed")
+    finally:
+        db.close()
     print(f"[Startup] ffmpeg: {FFMPEG_BIN}")
     print(f"[Startup] ffprobe: {FFPROBE_BIN}")
 
