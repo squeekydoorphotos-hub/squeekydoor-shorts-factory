@@ -877,10 +877,27 @@ def process_job(job_id: str, settings: dict):
         if settings.get("ai_pick") or settings.get("subtitles"):
             log("🎙️  Attempting transcription…")
             try:
-                import whisper
-                model = whisper.load_model("base")
-                result = model.transcribe(video_path, verbose=False, word_timestamps=True)
-                segments = result.get("segments", [])
+                import whisper, threading as _th
+                log("   Loading Whisper tiny model…")
+                model = whisper.load_model("tiny")
+                # For long videos only transcribe first 10 min — enough for clip picking
+                transcribe_path = video_path
+                if dur > 600:
+                    import subprocess as _sp, tempfile as _tf
+                    trimmed = str(Path(tmp_dir) / "trim_tx.mp4")
+                    _sp.run([FFMPEG_BIN, "-y", "-ss", "0", "-i", video_path,
+                             "-t", "600", "-c", "copy", trimmed],
+                            capture_output=True, timeout=60)
+                    if Path(trimmed).exists():
+                        transcribe_path = trimmed
+                        log("   Transcribing first 10 min of video…")
+                # Run with 5-min timeout so it never hangs forever
+                result_box = [None]
+                def _run(): result_box[0] = model.transcribe(transcribe_path, verbose=False, word_timestamps=True)
+                t = _th.Thread(target=_run, daemon=True); t.start(); t.join(timeout=300)
+                if result_box[0] is None:
+                    raise RuntimeError("Transcription timed out after 5 min")
+                segments = result_box[0].get("segments", [])
                 log(f"✅ {len(segments)} transcript segments")
             except ImportError:
                 log("ℹ️  Whisper not available — AI will pick by timestamp instead")
