@@ -1208,6 +1208,10 @@ function ClipPicker({ jobId, token, onNav }) {
         </div>
       )}
 
+      {pickerPreview && <VideoPreview url={pickerPreview.url} token={token} filename={pickerPreview.filename} onClose={() => setPickerPreview(null)} />}
+
+      {pickerPreview && <VideoPreview url={pickerPreview.url} token={token} filename={pickerPreview.filename} onClose={() => setPickerPreview(null)} />}
+
       {/* Bottom CTA */}
       {clips.length > 0 && (
         <div style={{ textAlign:"center", marginTop:28, color:C.dim,
