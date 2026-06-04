@@ -984,7 +984,8 @@ def process_job(job_id: str, settings: dict):
                     vertical=vertical, both=both,
                     ass_content=ass,
                     audio_norm=settings.get("audio_norm", True),
-                    log_fn=log
+                    log_fn=log,
+                    smart_reframe_mode=bool(settings.get("smart_reframe"))
                 )
 
                 # Smart reframe pass
