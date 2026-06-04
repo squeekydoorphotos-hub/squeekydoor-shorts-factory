@@ -318,7 +318,8 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
                  vertical: bool, both: bool,
                  ass_content: Optional[str],
                  audio_norm: bool,
-                 log_fn) -> list:
+                 log_fn,
+                 smart_reframe_mode: bool = False) -> list:
     """
     Extract clip(s). Returns list of output file paths created.
     """
@@ -338,7 +339,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
         cmd = [FFMPEG, "-y", "-ss", str(start), "-i", video, "-t", str(dur)]
         vf, af = [], []
 
-        if vert:
+        if vert and not smart_reframe_mode:
             vf.append("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920")
         if ass_path:
             safe = ass_path.replace("\\", "/").replace(":", "\\:")
