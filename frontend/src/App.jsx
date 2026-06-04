@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
-Add video preview modal to dashboard and clip pickerconst C = {
+const C = {
   dark:    "#000000",
   card:    "#0D0D0D",
   field:   "#141414",
