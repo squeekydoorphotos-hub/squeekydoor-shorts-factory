@@ -475,6 +475,7 @@ function Dashboard({ user, setUser, token, onNav }) {
   const [jobs,    setJobs]    = useState([])
   const [selJob,  setSelJob]  = useState(null)
   const [loading, setLoading] = useState(true)
+  const [preview, setPreview] = useState(null)  // {url, filename}
 
   const fetchJobs = useCallback(() => {
     apiFetch("/jobs",{},token).then(setJobs).catch(console.error)
@@ -516,6 +517,9 @@ function Dashboard({ user, setUser, token, onNav }) {
 
   return (
     <div style={{ maxWidth:960, margin:"0 auto", padding:"32px 24px" }}>
+      {preview && <VideoPreview url={preview.url} token={token}
+                                filename={preview.filename}
+                                onClose={() => setPreview(null)} />}
       {/* Stats */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16, marginBottom:24 }}>
         <div style={css.card}>
@@ -614,12 +618,22 @@ function Dashboard({ user, setUser, token, onNav }) {
                       <div style={css.sec}>Download Clips</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                         {j.clips.map(c => (
-                          <a key={c.filename} href={`${API}${c.url}`}
-                             download={c.filename}
-                             style={{ ...css.btn(C.field, C.emerald), textDecoration:"none",
-                                      fontSize:12, border:`1px solid ${C.emerald}30` }}>
-                            ⬇️ {c.filename.slice(0,28)}…
-                          </a>
+                          <div key={c.filename} style={{ display:"flex", gap:6, alignItems:"center",
+                                flexWrap:"wrap" }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); setPreview({url:c.url, filename:c.filename}) }}
+                              style={{ ...css.btn(C.field, C.gold), fontSize:12,
+                                       border:`1px solid ${C.gold}40` }}>
+                              ▶ Preview
+                            </button>
+                            <a href={`${API}${c.url}`}
+                               onClick={e => { e.stopPropagation() }}
+                               download={c.hook ? c.hook.replace(/[^a-z0-9 _-]/gi,"").trim().replace(/ +/g,"_")+".mp4" : c.filename}
+                               style={{ ...css.btn(C.field, C.emerald), textDecoration:"none",
+                                        fontSize:12, border:`1px solid ${C.emerald}30` }}>
+                              ⬇️ {(c.hook || c.filename).slice(0,28)}…
+                            </a>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -630,6 +644,73 @@ function Dashboard({ user, setUser, token, onNav }) {
           ))}
         </div>
        )}
+    </div>
+  )
+}
+
+// ── VIDEO PREVIEW MODAL ──────────────────────────────────────────
+
+function VideoPreview({ url, token, filename, onClose }) {
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [err,     setErr]     = useState("")
+
+  useEffect(() => {
+    let obj = null
+    fetch(API + url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error("Failed to load"); return r.blob() })
+      .then(b => { obj = URL.createObjectURL(b); setBlobUrl(obj); setLoading(false) })
+      .catch(e => { setErr(e.message); setLoading(false) })
+    return () => { if (obj) URL.revokeObjectURL(obj) }
+  }, [url, token])
+
+  return (
+    <div onClick={onClose} style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.88)",
+      zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center"
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background:C.card, borderRadius:12, padding:20, maxWidth:500,
+        width:"90%", border:`1px solid ${C.border}`
+      }}>
+        <div style={{ display:"flex", justifyContent:"space-between",
+                      alignItems:"center", marginBottom:12 }}>
+          <div style={{ fontSize:13, color:C.dim, fontFamily:"monospace",
+                        overflow:"hidden", textOverflow:"ellipsis",
+                        whiteSpace:"nowrap", maxWidth:380 }}>
+            {filename}
+          </div>
+          <button onClick={onClose} style={{ ...css.btn(C.field, C.dim),
+                  padding:"4px 10px", fontSize:16, lineHeight:1 }}>✕</button>
+        </div>
+
+        {loading && (
+          <div style={{ textAlign:"center", padding:40, color:C.dim }}>
+            ⏳ Loading preview…
+          </div>
+        )}
+        {err && (
+          <div style={{ color:C.red, padding:20, textAlign:"center" }}>{err}</div>
+        )}
+        {blobUrl && (
+          <video controls autoPlay style={{ width:"100%", borderRadius:8,
+                                            background:"#000", maxHeight:500 }}
+                 src={blobUrl} />
+        )}
+
+        <div style={{ display:"flex", gap:8, marginTop:12 }}>
+          <a href={blobUrl || "#"} download={filename}
+             style={{ ...css.btn(C.emerald, C.dark), textDecoration:"none",
+                      flex:1, textAlign:"center", opacity: blobUrl ? 1 : 0.4,
+                      pointerEvents: blobUrl ? "auto" : "none" }}>
+            ⬇️ Download
+          </a>
+          <button onClick={onClose}
+                  style={{ ...css.btn(C.field, C.dim), flex:1 }}>
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
