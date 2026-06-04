@@ -347,7 +347,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
         if vf: cmd += ["-vf", ",".join(vf)]
 
         if audio_norm:
-            af.append("dynaudnorm=f=75:g=25")
+            af.append("loudnorm=I=-16:TP=-1.5:LRA=11")
         if af: cmd += ["-af", ",".join(af)]
 
         cmd += ["-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
