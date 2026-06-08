@@ -218,6 +218,24 @@ class SocialAccount(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# ── Lightweight auto-migration: add new columns to existing tables ─
+# (Base.metadata.create_all only creates brand-new tables; it will NOT
+#  add new columns to a table that already exists on disk. Without this,
+#  the app crashes with "no such column: users.can_connect_socials".)
+def _migrate_db():
+    try:
+        with engine.connect() as conn:
+            cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()]
+            if "can_connect_socials" not in cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN can_connect_socials BOOLEAN DEFAULT 0")
+                conn.commit()
+                print("[Migration] Added users.can_connect_socials column")
+    except Exception as _mig_err:
+        print(f"[Migration] Skipped/failed (non-fatal): {_mig_err}")
+
+_migrate_db()
+
+
 
 def get_db():
     db = SessionLocal()
