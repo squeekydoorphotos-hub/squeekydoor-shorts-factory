@@ -90,6 +90,10 @@ ADMIN_EMAILS = {
     "wimplobeats@gmail.com",
 }
 
+# Main admin — only this account can grant/revoke social-connect access for others
+MAIN_ADMIN_EMAIL = "layzphotos@gmail.com"
+
+
 JOBS_DIR  = Path(tempfile.gettempdir()) / "sdp_jobs"
 FONTS_DIR = Path(__file__).parent / "fonts"
 JOBS_DIR.mkdir(exist_ok=True)
@@ -168,6 +172,7 @@ class User(Base):
     verify_token    = Column(String, nullable=True)
     reset_token     = Column(String, nullable=True)
     reset_token_exp = Column(DateTime, nullable=True)
+    can_connect_socials = Column(Boolean, default=False)  # social-media account linking permission
     created_at      = Column(DateTime, default=datetime.utcnow)
     jobs            = relationship("Job", back_populates="user")
 
@@ -197,6 +202,18 @@ class Transaction(Base):
     tokens     = Column(Float)
     ref_id     = Column(String)   # Stripe/PayPal ID
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SocialAccount(Base):
+    __tablename__ = "social_accounts"
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id          = Column(String, ForeignKey("users.id"), nullable=False)
+    platform         = Column(String, nullable=False)   # youtube / tiktok / instagram / facebook
+    account_name     = Column(String, nullable=True)
+    access_token     = Column(Text, nullable=True)
+    refresh_token    = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    connected_at     = Column(DateTime, default=datetime.utcnow)
 
 
 Base.metadata.create_all(bind=engine)
@@ -437,7 +454,7 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     except: pass
     return {"token": create_jwt(user.id), "tokens": user.tokens, "plan": user.plan,
             "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
-            "email_verified": user.email_verified}
+            "email_verified": user.email_verified, "can_connect_socials": user.can_connect_socials}
 
 
 @app.post("/auth/login")
@@ -447,7 +464,7 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "Invalid email or password")
     return {"token": create_jwt(user.id), "tokens": user.tokens, "plan": user.plan,
             "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
-            "email_verified": user.email_verified}
+            "email_verified": user.email_verified, "can_connect_socials": user.can_connect_socials}
 
 
 @app.get("/auth/me")
@@ -464,7 +481,40 @@ def me(user: User = Depends(get_current_user)):
             "next_free_job_at": next_free,
             "tokens_per_clip": TOKENS_PER_CLIP,
             "is_admin": user.email in ADMIN_EMAILS,
-            "email_verified": user.email_verified}
+            "email_verified": user.email_verified, "can_connect_socials": user.can_connect_socials}
+
+# ── Admin: manage social-connect access (main admin only) ────────
+def _require_main_admin(user: User = Depends(get_current_user)):
+    if user.email != MAIN_ADMIN_EMAIL:
+        raise HTTPException(403, "Only the main admin can manage access")
+    return user
+
+
+@app.get("/admin/users")
+def admin_list_users(admin: User = Depends(_require_main_admin),
+                      db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    return [{"id": u.id, "email": u.email, "plan": u.plan,
+             "is_admin": u.email in ADMIN_EMAILS,
+             "can_connect_socials": u.can_connect_socials,
+             "created_at": u.created_at} for u in users]
+
+
+class SocialAccessIn(BaseModel):
+    enabled: bool
+
+
+@app.post("/admin/users/{user_id}/social-access")
+def admin_set_social_access(user_id: str, data: SocialAccessIn,
+                            admin: User = Depends(_require_main_admin),
+                            db: Session = Depends(get_db)):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    target.can_connect_socials = data.enabled
+    db.commit()
+    return {"ok": True, "email": target.email, "can_connect_socials": target.can_connect_socials}
+
 
 # ── Email verify route ────────────────────────────────────────────
 @app.get("/auth/verify")
