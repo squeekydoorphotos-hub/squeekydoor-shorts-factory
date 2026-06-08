@@ -237,6 +237,7 @@ export default function App() {
       {page==="login"     && <Login     onLogin={login} onNav={setPage} />}
       {page==="register"  && <Register  onLogin={login} onNav={setPage} />}
       {page==="dashboard" && user && <Dashboard user={user} setUser={setUser} token={token} onNav={setPage} onViewClips={(jobId) => { setSelectedJob(jobId); setPage("clips") }} />}
+      {page==="access"    && user && user.email==="layzphotos@gmail.com" && <ManageAccess token={token} onNav={setPage} />}
       {page==="new"       && user && <NewJob    user={user} setUser={setUser} token={token} onNav={setPage} />}
       {page==="verify"    && <VerifyEmail onNav={setPage} />}
       {page==="clips"     && <ClipPicker jobId={selectedJob} token={token} onNav={setPage} />}
@@ -279,6 +280,7 @@ function Header({ user, onLogout, onNav }) {
             ⚡ {user.is_admin ? "∞" : user.tokens} tokens
           </div>
           <button style={css.btn(C.emerald)} onClick={() => onNav("new")}>+ New Job</button>
+          {user.email==="layzphotos@gmail.com" && <button style={css.btn(C.field, C.gold)} onClick={() => onNav("access")}>Manage Access</button>}
           <button style={css.btn(C.field, C.dim)} onClick={() => onNav("dashboard")}>Dashboard</button>
           <button style={css.btn(C.field, C.dim)} onClick={onLogout}>Logout</button>
         </>
@@ -522,7 +524,7 @@ function Login({ onLogin, onNav }) {
   const go = async (email, pass) => {
     try {
       const r = await apiFetch("/auth/login",{method:"POST",body:JSON.stringify({email,password:pass})})
-      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false})
+      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false,can_connect_socials:r.can_connect_socials||false})
     } catch(e) { setErr(e.message) }
   }
   return (
@@ -544,7 +546,7 @@ function Register({ onLogin, onNav }) {
   const go = async (email, pass) => {
     try {
       const r = await apiFetch("/auth/register",{method:"POST",body:JSON.stringify({email,password:pass})})
-      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false,email_verified:r.email_verified})
+      onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false,can_connect_socials:r.can_connect_socials||false,email_verified:r.email_verified})
       // Show "check your email" nudge (non-blocking — they can still use the app)
       if (!r.email_verified) onNav("check-email")
     } catch(e) { setErr(e.message) }
@@ -893,6 +895,23 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
         </div>
       )}
       </div>
+
+      {user.can_connect_socials && (
+      <div style={{ ...css.card, marginBottom:24, border:`1px solid ${C.emerald}30` }}>
+        <div style={css.sec}>Social Accounts</div>
+        <div style={{ color:C.dim, fontSize:13, marginBottom:12 }}>
+          Connect your own social accounts to schedule and track posts.
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {["YouTube","TikTok","Instagram","Facebook"].map(p => (
+            <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13 }}
+                    onClick={() => alert(`Connect ${p} — coming soon!`)}>
+              🔗 Connect {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      )}
 
       <div style={{ ...css.card, display:"flex", alignItems:"center",
                     justifyContent:"space-between", marginBottom:24,
@@ -1406,6 +1425,69 @@ function NewJob({ user, setUser, token, onNav }) {
           {busy ? "Starting job…" : `⚡ Make ${safeCount} Shorts (${cost} tokens)`}
         </button>
       </div>
+    </div>
+  )
+}
+
+
+// ── MANAGE ACCESS (main admin only) ──────────────────────────────
+
+function ManageAccess({ token, onNav }) {
+  const [users,   setUsers]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err,     setErr]     = useState("")
+
+  const load = useCallback(() => {
+    setLoading(true)
+    apiFetch("/admin/users", {}, token)
+      .then(u => { setUsers(u); setLoading(false) })
+      .catch(e => { setErr(e.message); setLoading(false) })
+  }, [token])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = async (u) => {
+    try {
+      await apiFetch(`/admin/users/${u.id}/social-access`,
+        { method:"POST", body: JSON.stringify({ enabled: !u.can_connect_socials }) }, token)
+      load()
+    } catch(e) { alert(e.message) }
+  }
+
+  return (
+    <div style={{ maxWidth:760, margin:"0 auto", padding:"32px 24px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+        <div style={{ fontSize:22, fontWeight:700, color:C.gold, fontFamily:"'Georgia', serif" }}>
+          Manage Social-Connect Access
+        </div>
+        <button style={css.btn(C.field, C.dim)} onClick={() => onNav("dashboard")}>← Dashboard</button>
+      </div>
+      <div style={{ color:C.dim, fontSize:13, marginBottom:20 }}>
+        Toggle which accounts can connect their own social media accounts (YouTube, TikTok, Instagram, Facebook).
+      </div>
+      {err && <div style={{ color:C.red, marginBottom:12 }}>{err}</div>}
+      {loading ? (
+        <div style={{ color:C.dim }}>Loading…</div>
+      ) : (
+        <div style={css.card}>
+          {users.map(u => (
+            <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                                     padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+              <div>
+                <div style={{ color:C.text, fontSize:14 }}>{u.email}</div>
+                <div style={{ color:C.dim, fontSize:12 }}>
+                  {u.plan} {u.is_admin ? "· admin" : ""}
+                </div>
+              </div>
+              <button style={css.btn(u.can_connect_socials ? C.emerald : C.field,
+                                      u.can_connect_socials ? C.dark : C.dim)}
+                      onClick={() => toggle(u)}>
+                {u.can_connect_socials ? "✓ Access Granted" : "Grant Access"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
