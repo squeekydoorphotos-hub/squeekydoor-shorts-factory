@@ -343,7 +343,7 @@ def send_email(to: str, subject: str, html: str):
         msg["From"]    = f"SDP Shorts <{EMAIL_FROM}>"
         msg["To"]      = to
         msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as s:
             s.login(EMAIL_FROM, EMAIL_PASS)
             s.sendmail(EMAIL_FROM, to, msg.as_string())
         print(f"[Email] Sent to {to}: {subject}")
