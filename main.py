@@ -395,6 +395,22 @@ def send_welcome_email(email: str):
       <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">0.5 tokens per clip · Clips available for 48 hours</p>
     </div>""")
 
+def send_job_done_email(email: str, clips_count: int):
+    send_email(email, "Your clips are ready! 🎬", f"""
+    <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
+      <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
+      <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
+      <h2 style="color:#C9A443;font-weight:400">All done! 🎉</h2>
+      <p style="color:#888;line-height:1.6">We finished processing your video and made <strong style="color:#C9A443">{clips_count} clip(s)</strong> for you.</p>
+      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them — clips are available for 48 hours.</p>
+      <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
+        View My Clips
+      </a>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">Clips available for 48 hours before they auto-clear</p>
+    </div>""")
+
+
+
 
 # ══════════════════════════════════════════════════════════════════
 #  APP
@@ -945,32 +961,62 @@ def process_job(job_id: str, settings: dict):
         if settings.get("ai_pick") or settings.get("subtitles"):
             log("🎙️  Attempting transcription…")
             try:
-                import whisper, threading as _th
+                import whisper, threading as _th, subprocess as _sp
                 log("   Loading Whisper tiny model…")
                 model = whisper.load_model("tiny")
-                # For long videos only transcribe first 10 min — enough for clip picking
-                transcribe_path = video_path
-                if dur > 600:
-                    import subprocess as _sp, tempfile as _tf
-                    trimmed = str(Path(tmp_dir) / "trim_tx.mp4")
-                    _sp.run([FFMPEG_BIN, "-y", "-ss", "0", "-i", video_path,
-                             "-t", "600", "-c", "copy", trimmed],
+
+                # Cap total transcription time at 30 min so a giant video can
+                # never tie up the server forever — plenty for clip-picking.
+                MAX_TX_SECONDS = 1800
+                tx_total = min(dur, MAX_TX_SECONDS)
+                if dur > MAX_TX_SECONDS:
+                    log("   Video is long — transcribing first 30 min only")
+
+                # Break the audio into ~2-min chunks. This lets us:
+                #   1) handle videos of any length (no more 10-min wall),
+                #   2) keep each individual transcribe() call small & fast,
+                #   3) log real progress after every chunk completes.
+                CHUNK_LEN = 120
+                chunk_starts = list(range(0, max(int(tx_total), 1), CHUNK_LEN)) or [0]
+                total_chunks = len(chunk_starts)
+                log(f"   Splitting into {total_chunks} chunk(s) for transcription…")
+
+                all_segments = []
+                for idx, start in enumerate(chunk_starts, start=1):
+                    length = min(CHUNK_LEN, tx_total - start) or CHUNK_LEN
+                    chunk_path = str(Path(tmp_dir) / f"tx_chunk_{idx}.mp4")
+                    _sp.run([FFMPEG_BIN, "-y", "-ss", str(start), "-i", video_path,
+                             "-t", str(length), "-c", "copy", chunk_path],
                             capture_output=True, timeout=60)
-                    if Path(trimmed).exists():
-                        transcribe_path = trimmed
-                        log("   Transcribing first 10 min of video…")
-                # Run with 5-min timeout so it never hangs forever
-                result_box = [None]
-                def _run(): result_box[0] = model.transcribe(transcribe_path, verbose=False, word_timestamps=True)
-                t = _th.Thread(target=_run, daemon=True); t.start(); t.join(timeout=300)
-                if result_box[0] is None:
-                    raise RuntimeError("Transcription timed out after 5 min")
-                segments = result_box[0].get("segments", [])
+                    if not Path(chunk_path).exists():
+                        log(f"   ⚠️  Couldn't extract chunk {idx}/{total_chunks} — skipping")
+                        continue
+
+                    # Run with a per-chunk timeout so one slow piece can't hang the whole job
+                    result_box = [None]
+                    def _run(p=chunk_path): result_box[0] = model.transcribe(p, verbose=False, word_timestamps=True)
+                    t = _th.Thread(target=_run, daemon=True)
+                    t.start(); t.join(timeout=180)
+                    if result_box[0] is None:
+                        log(f"   ⚠️  Chunk {idx}/{total_chunks} timed out — skipping")
+                    else:
+                        for seg in result_box[0].get("segments", []):
+                            seg["start"] = seg.get("start", 0) + start
+                            seg["end"] = seg.get("end", 0) + start
+                            all_segments.append(seg)
+                        pct = round(idx / total_chunks * 100)
+                        log(f"   🎙️  Transcribed chunk {idx}/{total_chunks} ({pct}%)")
+
+                    try: Path(chunk_path).unlink()
+                    except Exception: pass
+
+                segments = all_segments
                 log(f"✅ {len(segments)} transcript segments")
             except ImportError:
                 log("ℹ️  Whisper not available — AI will pick by timestamp instead")
             except Exception as e:
                 log(f"⚠️  Transcription skipped: {e}")
+
 
         # 4. Pick clips
         count    = settings.get("clip_count", 10)
@@ -1100,6 +1146,22 @@ def process_job(job_id: str, settings: dict):
 
         _set_job_status(job_id, "done", made)
         log(f"\n🎉 Done! {made}/{total} clips ready")
+
+        log(f"\n🎉 Done! {made}/{total} clips ready")
+
+        # Email the account holder that their clips are ready (non-blocking)
+        try:
+            _db = _db_session()
+            try:
+                _job = _db.query(Job).filter(Job.id == job_id).first()
+                _user = _db.query(User).filter(User.id == _job.user_id).first() if _job else None
+                if _user and _user.email:
+                    send_job_done_email(_user.email, made)
+            finally:
+                _db.close()
+        except Exception as _email_err:
+            print(f"[Email] job-done notify failed (non-fatal): {_email_err}")
+
 
     except Exception as ex:
         _set_job_status(job_id, "failed")
