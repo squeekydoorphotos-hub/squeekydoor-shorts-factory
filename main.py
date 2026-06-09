@@ -410,6 +410,21 @@ def send_job_done_email(email: str, clips_count: int):
     </div>""")
 
 
+def send_job_done_email(email: str, clips_count: int):
+    send_email(email, "Your clips are ready! 🎬", f"""
+    <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
+      <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
+      <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
+      <h2 style="color:#C9A443;font-weight:400">All done! 🎉</h2>
+      <p style="color:#888;line-height:1.6">We finished processing your video and made <strong style="color:#C9A443">{clips_count} clip(s)</strong> for you.</p>
+      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them — clips are available for 48 hours.</p>
+      <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
+        View My Clips
+      </a>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">Clips available for 48 hours before they auto-clear</p>
+    </div>""")
+
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -965,12 +980,7 @@ def process_job(job_id: str, settings: dict):
                 log("   Loading Whisper tiny model…")
                 model = whisper.load_model("tiny")
 
-                # Cap total transcription time at 30 min so a giant video can
-                # never tie up the server forever — plenty for clip-picking.
-                MAX_TX_SECONDS = 1800
-                tx_total = min(dur, MAX_TX_SECONDS)
-                if dur > MAX_TX_SECONDS:
-                    log("   Video is long — transcribing first 30 min only")
+                tx_total = dur  # no cap — transcribe the full video
 
                 # Break the audio into ~2-min chunks. This lets us:
                 #   1) handle videos of any length (no more 10-min wall),
