@@ -1272,7 +1272,7 @@ def youtube_callback(code: str, state: str, db: Session = Depends(get_db)):
         # Get channel name
         ch_resp = _req.get("https://www.googleapis.com/youtube/v3/channels",
             params={"part": "snippet", "mine": "true"},
-            headers={"Authorization": f"Bearer {tokens.get(\'access_token\', \'\')}"}, timeout=15)
+            headers={"Authorization": f"Bearer {tokens.get('access_token', '')}"}, timeout=15)
         ch = ch_resp.json().get("items", [{}])[0]
         ch_name = ch.get("snippet", {}).get("title", "My Channel")
         # Upsert SocialAccount
