@@ -905,7 +905,13 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {["YouTube","TikTok","Instagram","Facebook"].map(p => (
             <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13 }}
-                    onClick={() => alert(`Connect ${p} — coming soon!`)}>
+                    onClick={() => {
+                      if (p === "YouTube") {
+                        window.location.href = `https://backend-production-33b3.up.railway.app/social/youtube/connect?token=${token}`
+                      } else {
+                        alert(`Connect ${p} — coming soon!`)
+                      }
+                    }}>
               🔗 Connect {p}
             </button>
           ))}
