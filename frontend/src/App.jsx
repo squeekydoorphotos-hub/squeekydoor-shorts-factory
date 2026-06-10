@@ -907,7 +907,22 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
             <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13 }}
                     onClick={() => {
                       if (p === "YouTube") {
-                        window.location.href = `https://backend-production-33b3.up.railway.app/social/youtube/connect?token=${token}`
+                        fetch(`https://backend-production-33b3.up.railway.app/social/youtube/auth`, {headers:{Authorization:`Bearer ${token}`}})
+                          .then(r => r.json())
+                          .then(d => {
+                            if (d.auth_url) {
+                              const popup = window.open(d.auth_url, 'yt_auth', 'width=600,height=700');
+                              const timer = setInterval(() => {
+                                if (popup && popup.closed) {
+                                  clearInterval(timer);
+                                  apiFetch('/social/youtube/status', {}, token)
+                                    .then(r => setYtConn(r.connected))
+                                    .catch(() => {});
+                                }
+                              }, 1000);
+                            }
+                          })
+                          .catch(() => alert('YouTube connection failed — try again'));
                       } else {
                         alert(`Connect ${p} — coming soon!`)
                       }
