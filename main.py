@@ -218,7 +218,7 @@ class SocialAccount(Base):
     account_name     = Column(String, nullable=True)
     access_token     = Column(Text, nullable=True)
     refresh_token    = Column(Text, nullable=True)
-  2 token_expires_at = Column(DateTime, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
     connected_at     = Column(DateTime, default=datetime.utcnow)
 
 
