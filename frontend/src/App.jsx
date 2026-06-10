@@ -1039,6 +1039,13 @@ function ClipPicker({ jobId, token, onNav }) {
   const [selected,     setSelected]     = useState(new Set())
   const [pickerPreview, setPickerPreview] = useState(null)
   const [timeLeft, setTimeLeft] = useState("")
+  const [ytConn,  setYtConn]  = useState(false)
+  const [ytModal, setYtModal] = useState(null)
+  const [ytTitle, setYtTitle] = useState("")
+  const [ytDesc,  setYtDesc]  = useState("")
+  const [ytAt,    setYtAt]    = useState("")
+  const [ytBusy,  setYtBusy]  = useState(false)
+  const [ytMsg,   setYtMsg]   = useState("")
 
   useEffect(() => {
     if (!jobId) { onNav("dashboard"); return }
@@ -1061,6 +1068,12 @@ function ClipPicker({ jobId, token, onNav }) {
     const id = setInterval(tick, 60000)
     return () => clearInterval(id)
   }, [job])
+
+  useEffect(() => {
+    apiFetch("/social/youtube/status", {}, token)
+      .then(r => setYtConn(r.connected))
+      .catch(() => {})
+  }, [token])
 
   if (loading) return (
     <div style={{ textAlign:"center", padding:80, color:C.dim }}>Loading clips…</div>
@@ -1090,6 +1103,26 @@ function ClipPicker({ jobId, token, onNav }) {
     clips.filter(c => selected.has(c.filename)).forEach((c, i) => {
       setTimeout(() => downloadClip(c), i * 500)
     })
+  }
+
+  const uploadToYt = async () => {
+    if (!ytModal) return
+    setYtBusy(true); setYtMsg("")
+    try {
+      const ps = new URLSearchParams({
+        clip_job_id: job && job.id,
+        clip_filename: ytModal.filename,
+        title: ytTitle,
+        description: ytDesc,
+        publish_at: ytAt,
+      })
+      const r = await apiFetch("/social/youtube/upload?" + ps, {method:"POST"}, token)
+      setYtMsg("✅ Uploaded! " + (r.youtube_url||""))
+      setYtBusy(false)
+    } catch(e) {
+      setYtMsg("❌ " + e.message)
+      setYtBusy(false)
+    }
   }
 
   return (
@@ -1220,6 +1253,12 @@ function ClipPicker({ jobId, token, onNav }) {
                           onClick={e => { e.stopPropagation(); downloadClip(clip) }}>
                     ⬇️ Download
                   </button>
+                {ytConn && (
+                  <button style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                          onClick={e => { e.stopPropagation(); setYtModal(clip); setYtTitle(clip.hook||""); setYtDesc(""); setYtAt("") }}>
+                    ▶️ YouTube
+                  </button>
+                )}
                 </div>
               </div>
             )
@@ -1236,6 +1275,26 @@ function ClipPicker({ jobId, token, onNav }) {
         <div style={{ textAlign:"center", marginTop:28, color:C.dim,
                       fontSize:12, fontFamily:"Arial,sans-serif" }}>
           Clips auto-delete 48 hours after processing · Make a new job any time
+        </div>
+      )}
+
+      {ytModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setYtModal(null);setYtMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>▶️ Post to YouTube</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {ytModal.filename}</div>
+            <input placeholder="Title *" value={ytTitle} onChange={e=>setYtTitle(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <textarea placeholder="Description (optional)" value={ytDesc} onChange={e=>setYtDesc(e.target.value)} rows={3}
+                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
+            <input placeholder="Schedule (ISO 8601, blank = publish now)" value={ytAt} onChange={e=>setYtAt(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            {ytMsg && <div style={{fontSize:13,color:ytMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{ytMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setYtModal(null);setYtMsg("")}}>Cancel</button>
+              <button style={{...css.btn(C.red,C.dark),opacity:ytBusy||!ytTitle?0.5:1}} disabled={ytBusy||!ytTitle} onClick={uploadToYt}>{ytBusy?"Uploading…":"Upload"}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
