@@ -1135,7 +1135,7 @@ function ClipPicker({ jobId, token, onNav }) {
         clip_filename: ytModal.filename,
         title: ytTitle,
         description: ytDesc,
-        publish_at: ytAt,
+        publish_at: ytAt ? new Date(ytAt).toISOString() : "",
       })
       const r = await apiFetch("/social/youtube/upload?" + ps, {method:"POST"}, token)
       setYtMsg("✅ Uploaded! " + (r.youtube_url||""))
@@ -1308,8 +1308,11 @@ function ClipPicker({ jobId, token, onNav }) {
                    style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
             <textarea placeholder="Description (optional)" value={ytDesc} onChange={e=>setYtDesc(e.target.value)} rows={3}
                       style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
-            <input placeholder="Schedule (ISO 8601, blank = publish now)" value={ytAt} onChange={e=>setYtAt(e.target.value)}
-                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:C.dim,letterSpacing:1,textTransform:"uppercase"}}>Schedule (blank = post now)</label>
+              <input type="datetime-local" value={ytAt} onChange={e=>setYtAt(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none",colorScheme:"dark"}} />
+            </div>
             {ytMsg && <div style={{fontSize:13,color:ytMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{ytMsg}</div>}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <button style={css.btn(C.muted,C.dark)} onClick={()=>{setYtModal(null);setYtMsg("")}}>Cancel</button>
