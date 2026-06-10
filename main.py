@@ -79,6 +79,12 @@ PAYPAL_MODE          = os.getenv("PAYPAL_MODE", "sandbox")
 PAYPAL_BASE = ("https://api-m.sandbox.paypal.com" if PAYPAL_MODE == "sandbox"
                else "https://api-m.paypal.com")
 
+YOUTUBE_CLIENT_ID     = os.getenv("YOUTUBE_CLIENT_ID", "")
+YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "")
+YOUTUBE_REDIRECT_URI  = "https://backend-production-33b3.up.railway.app/social/youtube/callback"
+YOUTUBE_SCOPES        = ["https://www.googleapis.com/auth/youtube.upload",
+                          "https://www.googleapis.com/auth/youtube.readonly"]
+
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
 # ── Admin / owner accounts — bypass all token checks ──────────────
@@ -212,7 +218,7 @@ class SocialAccount(Base):
     account_name     = Column(String, nullable=True)
     access_token     = Column(Text, nullable=True)
     refresh_token    = Column(Text, nullable=True)
-    token_expires_at = Column(DateTime, nullable=True)
+  2 token_expires_at = Column(DateTime, nullable=True)
     connected_at     = Column(DateTime, default=datetime.utcnow)
 
 
@@ -396,7 +402,7 @@ def send_welcome_email(email: str):
     </div>""")
 
 def send_job_done_email(email: str, clips_count: int):
-    send_email(email, "Your clips are ready! 🎬", f"""
+    send_email(email, "Your clips are ready!!🎬", f"""
     <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
       <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
       <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
@@ -974,7 +980,7 @@ def process_job(job_id: str, settings: dict):
         # 3. Transcribe if needed (whisper optional)
         segments = []
         if settings.get("ai_pick") or settings.get("subtitles"):
-            log("🎙️  Attempting transcription…")
+            log("😙️  Attempting transcription…")
             try:
                 import whisper, threading as _th, subprocess as _sp
                 log("   Loading Whisper tiny model…")
@@ -1078,7 +1084,7 @@ def process_job(job_id: str, settings: dict):
 
             # Final clamp to video bounds
             s = max(0, min(s, dur - 1))
-            e = min(e, dur)
+            e = min(u, dur)
 
             if e - s < 1:
                 log(f"⚠️  Clip {i} too short after adjustment, skip"); continue
@@ -1223,6 +1229,195 @@ def _ffprobe_duration(path: str) -> float:
         pass
 
     return 0.0
+
+
+
+# ══════════════════════════════════════════════════════════════════
+#  YOUTUBE OAUTH + UPLOAD ROUTES
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/social/youtube/auth")
+def youtube_auth(current_user: User = Depends(get_current_user)):
+    try:
+        import urllib.parse
+        params = {
+            "client_id": YOUTUBE_CLIENT_ID,
+            "redirect_uri": YOUTUBE_REDIRECT_URI,
+            "response_type": "code",
+            "scope": " ".join(YOUTUBE_SCOPES),
+            "access_type": "offline",
+            "prompt": "consent",
+            "state": str(current_user.id),
+        }
+        url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+        return {"auth_url": url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/social/youtube/callback")
+def youtube_callback(code: str, state: str, db: Session = Depends(get_db)):
+    try:
+        import requests as _req
+        # Exchange code for tokens
+        token_resp = _req.post("https://oauth2.googleapis.com/token", data={
+            "code": code,
+            "client_id": YOUTUBE_CLIENT_ID,
+            "client_secret": YOUTUBE_CLIENT_SECRET,
+            "redirect_uri": YOUTUBE_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        }, timeout=20)
+        tokens = token_resp.json()
+        user_id = state  # UUID string
+        # Get channel name
+        ch_resp = _req.get("https://www.googleapis.com/youtube/v3/channels",
+            params={"part": "snippet", "mine": "true"},
+            headers={"Authorization": f"Bearer {tokens.get(\'access_token\', \'\')}"}, timeout=15)
+        ch = ch_resp.json().get("items", [{}])[0]
+        ch_name = ch.get("snippet", {}).get("title", "My Channel")
+        # Upsert SocialAccount
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == user_id,
+            SocialAccount.platform == "youtube"
+        ).first()
+        if not sa:
+            sa = SocialAccount(user_id=user_id, platform="youtube")
+            db.add(sa)
+        sa.access_token    = tokens.get("access_token")
+        sa.refresh_token   = tokens.get("refresh_token")
+        sa.account_name    = ch_name
+        sa.token_expires_at = datetime.utcnow() + timedelta(seconds=tokens.get("expires_in", 3600))
+        db.commit()
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            "<script>window.close();</script>"
+            "<p style=\'font-family:sans-serif;text-align:center;margin-top:80px\'>"
+            "✅ YouTube connected! You can close this tab.</p>"
+        )
+    except Exception as e:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(f"<p style=\'color:red\'>Error: {e}</p>")
+
+
+@app.get("/social/youtube/status")
+def youtube_status(current_user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    try:
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == current_user.id,
+            SocialAccount.platform == "youtube"
+        ).first()
+        if not sa:
+            return {"connected": False}
+        return {"connected": True, "channel_name": sa.account_name or "YouTube"}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
+@app.delete("/social/youtube/disconnect")
+def youtube_disconnect(current_user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    try:
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == current_user.id,
+            SocialAccount.platform == "youtube"
+        ).first()
+        if sa:
+            db.delete(sa)
+            db.commit()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/social/youtube/upload")
+def youtube_upload(
+    clip_job_id: str,
+    clip_filename: str,
+    title: str,
+    description: str = "",
+    publish_at: str = "",   # ISO8601 e.g. "2026-06-10T18:00:00Z", empty = public now
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a clip to YouTube. Optionally schedule via publish_at (ISO8601)."""
+    try:
+        import requests as _req, json as _json
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == current_user.id,
+            SocialAccount.platform == "youtube"
+        ).first()
+        if not sa:
+            raise HTTPException(status_code=400, detail="YouTube not connected. Connect it in Settings first.")
+        # Refresh token if expired
+        token = sa.access_token
+        if sa.token_expires_at and sa.token_expires_at < datetime.utcnow():
+            r = _req.post("https://oauth2.googleapis.com/token", data={
+                "client_id": YOUTUBE_CLIENT_ID,
+                "client_secret": YOUTUBE_CLIENT_SECRET,
+                "refresh_token": sa.refresh_token,
+                "grant_type": "refresh_token",
+            }, timeout=20)
+            td = r.json()
+            token = td.get("access_token", token)
+            sa.access_token = token
+            sa.token_expires_at = datetime.utcnow() + timedelta(seconds=td.get("expires_in", 3600))
+            db.commit()
+        # Validate job ownership
+        job = db.query(Job).filter(Job.id == clip_job_id,
+                                    Job.user_id == current_user.id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        clip_path = JOBS_DIR / clip_job_id / clip_filename
+        if not clip_path.exists():
+            raise HTTPException(status_code=404, detail="Clip file not found")
+        # Build metadata
+        status_body: dict = {"privacyStatus": "public"}
+        if publish_at:
+            status_body = {"privacyStatus": "private", "publishAt": publish_at}
+        meta = {
+            "snippet": {
+                "title": title[:100],
+                "description": description[:5000],
+                "categoryId": "22"
+            },
+            "status": status_body
+        }
+        # Initiate resumable upload
+        init_r = _req.post(
+            "https://www.googleapis.com/upload/youtube/v3/videos"
+            "?uploadType=resumable&part=snippet,status",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": "video/mp4",
+            },
+            data=_json.dumps(meta),
+            timeout=30
+        )
+        upload_url = init_r.headers.get("Location")
+        if not upload_url:
+            raise HTTPException(status_code=500, detail=f"YouTube init failed: {init_r.text[:300]}")
+        # Upload video bytes
+        with open(str(clip_path), "rb") as f:
+            video_data = f.read()
+        up_r = _req.put(upload_url, data=video_data,
+                         headers={"Content-Type": "video/mp4"},
+                         timeout=300)
+        if up_r.status_code not in (200, 201):
+            raise HTTPException(status_code=500, detail=f"Upload failed: {up_r.text[:300]}")
+        yt_video_id = up_r.json().get("id", "")
+        return {
+            "success": True,
+            "youtube_video_id": yt_video_id,
+            "youtube_url": f"https://youtu.be/{yt_video_id}",
+            "scheduled": bool(publish_at),
+            "publish_at": publish_at or None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ══════════════════════════════════════════════════════════════════
