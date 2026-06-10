@@ -1084,7 +1084,7 @@ def process_job(job_id: str, settings: dict):
 
             # Final clamp to video bounds
             s = max(0, min(s, dur - 1))
-            e = min(u, dur)
+            e = min(e, dur)
 
             if e - s < 1:
                 log(f"⚠️  Clip {i} too short after adjustment, skip"); continue
