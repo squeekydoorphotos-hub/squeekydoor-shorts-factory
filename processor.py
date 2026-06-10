@@ -377,58 +377,100 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
 
 def smart_reframe(input_path: str, output_path: str,
                   smoothness: float, log_fn):
+    """
+    Two-pass smooth reframe:
+      Pass 1 — detect face centre-x for every frame, fill gaps, Gaussian-smooth.
+      Pass 2 — render each frame using the pre-computed smooth crop position.
+    Eliminates jitter caused by frame-by-frame EMA.
+    """
     import cv2
+    import numpy as np
 
     cap    = cv2.VideoCapture(input_path)
     fps    = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w      = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     crop_w = min(w, int(h * 9 / 16))
     OUT_W, OUT_H = 1080, 1920
 
-    tmp    = input_path + "_rf_raw.mp4"
-    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"),
-                              fps, (OUT_W, OUT_H))
     cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
-    alpha     = max(0.03, min(0.30, smoothness * 0.25 + 0.03))
-    smooth_cx = float(w) / 2
-    tracked   = 0
-
+    # ── PASS 1: collect raw face cx per frame ─────────────────────
+    log_fn("   🎯 Reframe pass 1: scanning faces…")
+    cx_raw, frames = [], []
     while True:
         ret, frame = cap.read()
-        if not ret: break
-
-        scale  = 640 / w; dh = int(h * scale)
-        small  = cv2.resize(frame, (640, dh))
-        gray   = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces  = cascade.detectMultiScale(gray, 1.1, 4, minSize=(25, 25))
+        if not ret:
+            break
+        frames.append(frame)
+        scale = 640 / w
+        small = cv2.resize(frame, (640, int(h * scale)))
+        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        faces = cascade.detectMultiScale(gray, 1.1, 4, minSize=(25, 25))
         if len(faces):
             fx, fy, fw, fh = faces[0]
-            cx = (fx + fw / 2) / scale
-            smooth_cx = alpha * cx + (1.0 - alpha) * smooth_cx
-            tracked += 1
+            cx_raw.append((fx + fw / 2) / scale)
+        else:
+            cx_raw.append(None)
+    cap.release()
 
-        half = crop_w / 2
-        x1   = int(max(0, min(w - crop_w, smooth_cx - half)))
+    n = len(frames)
+    if n == 0:
+        log_fn("   ⚠️  No frames to reframe")
+        return
+
+    tracked = sum(1 for c in cx_raw if c is not None)
+    log_fn(f"   🎯 Face detected in {tracked}/{n} frames")
+
+    # ── Fill gaps via linear interpolation ────────────────────────
+    default_cx = float(w) / 2
+    known = [(i, v) for i, v in enumerate(cx_raw) if v is not None]
+    if not known:
+        cx_filled = [default_cx] * n
+    else:
+        kx = [i for i, _ in known]
+        ky = [v for _, v in known]
+        # Extend sentinels so every frame is covered
+        if kx[0] > 0:
+            kx.insert(0, 0);     ky.insert(0, ky[0])
+        if kx[-1] < n - 1:
+            kx.append(n - 1);    ky.append(ky[-1])
+        cx_filled = list(np.interp(range(n), kx, ky))
+
+    # ── Gaussian smooth across the whole timeline ─────────────────
+    # smoothness 0→1 maps window 15→90 frames (higher = lazier/smoother pan)
+    win = max(15, int(smoothness * 75 + 15))
+    if win % 2 == 0:
+        win += 1
+    kernel = cv2.getGaussianKernel(win, win / 3.0).flatten()
+    pad    = win // 2
+    padded = np.pad(cx_filled, pad, mode="reflect")
+    cx_smooth = np.convolve(padded, kernel, mode="valid")[:n]
+
+    # ── PASS 2: render with smoothed crop positions ───────────────
+    log_fn("   🎯 Reframe pass 2: rendering…")
+    tmp    = input_path + "_rf_raw.mp4"
+    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"),
+                              fps, (OUT_W, OUT_H))
+    half = crop_w / 2
+    for i, frame in enumerate(frames):
+        x1 = int(max(0, min(w - crop_w, cx_smooth[i] - half)))
         cropped = frame[:, x1:x1 + crop_w]
         writer.write(cv2.resize(cropped, (OUT_W, OUT_H),
                                  interpolation=cv2.INTER_LINEAR))
-
-    cap.release(); writer.release()
-    log_fn(f"   🎯 Reframe: face tracked in {tracked} frames")
+    writer.release()
 
     cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
-           "-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
+           "-c:v", "libx264", "-preset", "fast", "-crf", "22",
            "-c:a", "aac", "-b:a", "128k", output_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try: os.remove(tmp)
     except: pass
     if r.returncode != 0:
         raise RuntimeError(f"reframe: {r.stderr[-300:]}")
+
 
 
 # ══════════════════════════════════════════════════════════════════
