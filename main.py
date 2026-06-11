@@ -38,6 +38,7 @@ from fastapi import (FastAPI, Depends, HTTPException, BackgroundTasks,
                      Request, Header, Response, status)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import (create_engine, Column, String, Integer, Float,
@@ -63,7 +64,12 @@ load_dotenv()
 #  CONFIG
 # ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-SECRET_KEY      = os.getenv("SECRET_KEY", "change-me-in-production-32chars!!")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set — refusing to start. "
+        "Set it in Railway → Variables before deploying."
+    )
 ALGORITHM       = "HS256"
 TOKEN_EXP_HOURS = 24 * 2   # 2 days JWT
 
@@ -508,6 +514,17 @@ app.add_middleware(CORSMiddleware,
         "http://localhost:3000",
     ],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options",  "nosniff")
+        resp.headers.setdefault("X-Frame-Options",          "DENY")
+        resp.headers.setdefault("Referrer-Policy",          "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy",       "camera=(), microphone=(), geolocation=()")
+        return resp
+
+app.add_middleware(_SecurityHeadersMiddleware)
 
 # ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  PYDANTIC SCHEMAS
