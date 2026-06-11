@@ -780,7 +780,7 @@ def retry_job(job_id: str,
 
 
 @app.get("/jobs/{job_id}/clips")
-def list_clips(job_id: str, user: User = Depends(get_currentUser),
+def list_clips(job_id: str, user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
     if not job: raise HTTPException(404, "Job not found")
@@ -1402,7 +1402,7 @@ def youtube_status(current_user: User = Depends(get_current_user),
 
 
 @app.delete("/social/youtube/disconnect")
-def youtube_disconnect(current_user: User = Depends(get_currentUser),
+def youtube_disconnect(current_user: User = Depends(get_current_user),
                        db: Session = Depends(get_db)):
     try:
         sa = db.query(SocialAccount).filter(
