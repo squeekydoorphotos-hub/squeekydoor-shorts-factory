@@ -1,0 +1,40 @@
+# netlify.toml — Squeeky Door Productions / SDP Shorts Factory
+# Netlify build config + security headers (OWASP H1, H3, #22)
+
+[build]
+  base    = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+# ─────────────────────────────────────────────────────────────────
+# SECURITY HEADERS  (applied to every response)
+# ─────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+
+    # Force HTTPS for 1 year; include subdomains
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+
+    # Prevent MIME-type sniffing
+    X-Content-Type-Options = "nosniff"
+
+    # Block framing (clickjacking)
+    X-Frame-Options = "DENY"
+
+    # Suppress full referrer for cross-origin requests
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Restrict browser feature access
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+    # Content-Security-Policy — no unsafe-inline/eval on scripts
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://i.ytimg.com https://img.youtube.com; connect-src 'self' https://backend-production-33b3.up.railway.app https://api.stripe.com https://www.paypal.com https://api-m.sandbox.paypal.com https://api-m.paypal.com; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;"
+
+# ─────────────────────────────────────────────────────────────────
+# SPA ROUTING  (all paths → index.html so React Router works)
+# ─────────────────────────────────────────────────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
