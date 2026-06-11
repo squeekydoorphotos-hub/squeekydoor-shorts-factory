@@ -2,8 +2,18 @@
   publish = "dist"
   command = "npm run build"
 
-# This makes page refreshes work (single-page app routing)
+# Single-page app routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://backend-production-33b3.up.railway.app; frame-ancestors 'none';"
