@@ -10,6 +10,7 @@ python-dotenv==1.0.1
 pydantic[email]==2.7.1
 anthropic
 yt-dlp>=2025.1.15
+slowapi>=0.1.9
 
 opencv-python-headless
 openai-whisper
