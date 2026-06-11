@@ -28,7 +28,8 @@ try:
 except Exception:
     pass
 
-import os, uuid, json, shutil, asyncio, tempfile, math, subprocess, threading
+import os, uuid, json, re, shutil, asyncio, tempfile, math, subprocess, threading
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
@@ -327,6 +328,47 @@ def paypal_capture_order(order_id: str) -> dict:
         timeout=15)
     r.raise_for_status()
     return r.json()
+
+# ══════════════════════════════════════════════════════════════
+#  URL VALIDATION  (SSRF protection)
+# ══════════════════════════════════════════════════════════════
+
+ALLOWED_VIDEO_DOMAINS = {
+    "youtube.com", "youtu.be",
+    "vimeo.com",
+    "tiktok.com",
+    "instagram.com",
+    "twitter.com", "x.com",
+    "twitch.tv",
+    "facebook.com",
+    "dailymotion.com",
+    "reddit.com",
+    "streamable.com",
+}
+
+def validate_video_url(url: str) -> str:
+    """Block SSRF: only allow known public video platform domains."""
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        raise HTTPException(400, "Invalid URL")
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(400, "Only http/https URLs are allowed")
+    host = parsed.netloc.lower().split(":")[0]  # strip port
+    if not host:
+        raise HTTPException(400, "Invalid URL \u2014 missing host")
+    allowed = any(
+        host == d or host.endswith("." + d)
+        for d in ALLOWED_VIDEO_DOMAINS
+    )
+    if not allowed:
+        raise HTTPException(
+            400,
+            "Unsupported video platform. Supported: YouTube, Vimeo, TikTok, "
+            "Instagram, Twitter/X, Twitch, Facebook, Dailymotion, Reddit, Streamable."
+        )
+    return url.strip()
+
 
 # ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  FONT DOWNLOADER
@@ -660,6 +702,9 @@ def reset_password(data: ResetIn, db: Session = Depends(get_db)):
 def create_job(data: JobCreateIn,
                user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
+    # SSRF protection: validate URL is a known public video platform
+    validate_video_url(data.source_url)
+
     cost = round(data.clip_count * TOKENS_PER_CLIP, 1)
     admin = user.email in ADMIN_EMAILS
 
@@ -737,7 +782,7 @@ def retry_job(job_id: str,
 @app.get("/jobs/{job_id}/clips")
 def list_clips(job_id: str, user: User = Depends(get_currentUser),
                db: Session = Depends(get_db)):
-    jo/b = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
     if not job: raise HTTPException(404, "Job not found")
     job_dir = JOBS_DIR / job_id
     if not job_dir.exists():
