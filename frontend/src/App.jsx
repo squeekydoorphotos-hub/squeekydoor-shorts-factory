@@ -1754,11 +1754,27 @@ function TermsOfService() {
       activity on your account.</p>
 
       <PolicyH>Payments, tokens & refunds</PolicyH>
-      <p>The service uses tokens, available through plans and top-ups. <b>All sales are
-      final.</b> Purchases, including unused tokens and subscription fees, are non-refundable
-      except where the law requires otherwise. We may change pricing, and will give notice of
-      changes that affect an active subscription. Tokens have no cash value and cannot be
-      transferred.</p>
+      <p>The service uses tokens, available through plans and top-ups.</p>
+      <p><b>14-day money-back guarantee.</b> If you haven't used any tokens from a purchase,
+      you can get a full refund within 14 days of that purchase — just email{" "}
+      <a style={a} href="mailto:squeekydoorphotos@gmail.com">squeekydoorphotos@gmail.com</a>.
+      If you've used some of the tokens, we may refund the unused portion at our discretion.</p>
+      <p><b>If something goes wrong on our end</b> — a job fails, clips don't generate, or a
+      technical error eats your tokens — tell us and we'll re-run the job or re-credit your
+      tokens. You should never pay for output you didn't receive.</p>
+      <p><b>Subscriptions</b> can be canceled anytime and stay active until the end of the
+      billing period you've paid for. After the 14-day window, payments for the current
+      period are not refunded, and partial months aren't prorated.</p>
+      <p><b>The fine print that keeps everyone safe:</b> refunds go back to the original
+      payment method (allow 5–10 business days). Used tokens, and free or promotional
+      tokens, are not refundable and have no cash value. Tokens can't be transferred or
+      exchanged for cash. We may decline refunds where we find fraud, abuse of this policy
+      (such as repeated purchase-and-refund cycles), or violations of these terms. Where
+      consumer law gives you stronger rights, those rights apply.</p>
+      <p><b>Before disputing a charge with your bank,</b> please email us — we resolve
+      almost every issue within one business day, and it's faster than a bank dispute for
+      you too. We may change pricing, and will give notice of changes that affect an
+      active subscription.</p>
 
       <PolicyH>Your content</PolicyH>
       <p>You must own the videos you submit or have permission to use them. You keep ownership
