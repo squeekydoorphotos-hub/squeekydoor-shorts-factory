@@ -41,7 +41,7 @@ const css = {
 
 const TOKENS_PER_CLIP = 0.5
 
-// ââ API ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── API ────────────────────────────────────────────────────────────
 function apiFetch(path, opts={}, token=null) {
   const headers = { "Content-Type":"application/json", ...(opts.headers||{}) }
   if (token) headers["Authorization"] = `Bearer ${token}`
@@ -64,7 +64,7 @@ async function downloadWithAuth(url, filename, token) {
   URL.revokeObjectURL(blobUrl)
 }
 
-// ââ VIDEO PREVIEW MODAL ââââââââââââââââââââââââââââââââââââââââââ
+// ── VIDEO PREVIEW MODAL ──────────────────────────────────────────
 
 function VideoPreview({ url, token, filename, onClose }) {
   const [blobUrl, setBlobUrl] = useState(null)
@@ -83,15 +83,15 @@ function VideoPreview({ url, token, filename, onClose }) {
       <div onClick={e => e.stopPropagation()} style={{ background:C.card, borderRadius:12, padding:20, maxWidth:520, width:"92%", border:`1px solid ${C.border}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div style={{ fontSize:12, color:C.dim, fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:400 }}>{filename}</div>
-          <button onClick={onClose} style={{ ...css.btn(C.field, C.dim), padding:"4px 10px", fontSize:16 }}>â</button>
+          <button onClick={onClose} style={{ ...css.btn(C.field, C.dim), padding:"4px 10px", fontSize:16 }}>✕</button>
         </div>
-        {loading && <div style={{ textAlign:"center", padding:40, color:C.dim }}>â³ Loading previewâ¦</div>}
+        {loading && <div style={{ textAlign:"center", padding:40, color:C.dim }}>⏳ Loading preview…</div>}
         {err     && <div style={{ color:C.red, padding:20, textAlign:"center" }}>{err}</div>}
         {blobUrl && <video controls autoPlay style={{ width:"100%", borderRadius:8, background:"#000", maxHeight:520 }} src={blobUrl} />}
         <div style={{ display:"flex", gap:8, marginTop:12 }}>
           <button style={{ ...css.btn(C.emerald, C.dark), flex:1, opacity:blobUrl?1:0.4, pointerEvents:blobUrl?"auto":"none" }}
                   onClick={() => { if(blobUrl){const a=document.createElement("a");a.href=blobUrl;a.download=filename;a.click()} }}>
-            â¬ï¸ Download
+            ⬇️ Download
           </button>
           <button onClick={onClose} style={{ ...css.btn(C.field, C.dim), flex:1 }}>Close</button>
         </div>
@@ -100,13 +100,13 @@ function VideoPreview({ url, token, filename, onClose }) {
   )
 }
 
-// ââ VIRALITY SCORE badge âââââââââââââââââââââââââââââââââââââââââââ
+// ── VIRALITY SCORE badge ───────────────────────────────────────────
 function ViralityBadge({ score, tag }) {
   if (!score && score !== 0) return null
   const colour = score >= 85 ? C.emerald : score >= 70 ? C.gold :
                  score >= 55 ? C.orange  : C.dim
-  const fire   = score >= 85 ? "ð¥" : score >= 70 ? "â¡" :
-                 score >= 55 ? "â¨" : "ð¤"
+  const fire   = score >= 85 ? "🔥" : score >= 70 ? "⚡" :
+                 score >= 55 ? "✨" : "💤"
   return (
     <div style={{ display:"inline-flex", alignItems:"center", gap:6,
                   background:`${colour}18`, border:`1px solid ${colour}50`,
@@ -118,7 +118,7 @@ function ViralityBadge({ score, tag }) {
   )
 }
 
-// ââ TOKEN ESTIMATOR ââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── TOKEN ESTIMATOR ────────────────────────────────────────────────
 function TokenEstimator({ clipCount, userTokens, plan, nextFreeJobAt }) {
   const cost    = Math.round(clipCount * TOKENS_PER_CLIP * 10) / 10
   const after   = Math.round((userTokens - cost) * 10) / 10
@@ -155,7 +155,7 @@ function TokenEstimator({ clipCount, userTokens, plan, nextFreeJobAt }) {
         </div>
         <span style={{ color: canDo ? C.emerald : C.red,
                        fontWeight:700, fontSize:16, minWidth:60, textAlign:"right" }}>
-          â{cost} tokens
+          −{cost} tokens
         </span>
       </div>
 
@@ -178,22 +178,22 @@ function TokenEstimator({ clipCount, userTokens, plan, nextFreeJobAt }) {
       {freeMsg && (
         <div style={{ marginTop:10, background:"#FF8C0020", border:`1px solid ${C.orange}40`,
                       borderRadius:8, padding:"8px 12px", color:C.orange, fontSize:12 }}>
-          â³ {freeMsg}
+          ⏳ {freeMsg}
         </div>
       )}
       {!canDo && (
         <div style={{ marginTop:10, background:"#FF555520", border:`1px solid ${C.red}40`,
                       borderRadius:8, padding:"8px 12px", color:C.red, fontSize:12 }}>
-          Not enough tokens â buy a top-up or upgrade your plan
+          Not enough tokens — buy a top-up or upgrade your plan
         </div>
       )}
     </div>
   )
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═════════════════════════════════════════════════════════════════
 //  TOP-LEVEL APP
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ══════════════════════════════════════════════════════════════════
 
 export default function App() {
   const [token,       setToken]       = useState("")
@@ -284,7 +284,7 @@ export default function App() {
   )
 }
 
-// ââ HEADER ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── HEADER ────────────────────────────────────────────────────────
 
 function Header({ user, onLogout, onNav }) {
   return (
@@ -310,13 +310,13 @@ function Header({ user, onLogout, onNav }) {
                           fontSize:11, color:C.gold, fontWeight:700, letterSpacing:2,
                           textTransform:"uppercase", border:`1px solid ${C.gold}`,
                           fontFamily:"Arial, sans-serif" }}>
-              â ADMIN Â· NO LIMITS
+              ★ ADMIN · NO LIMITS
             </div>
           )}
           <div style={{ background:C.field, borderRadius:20, padding:"4px 14px",
                         fontSize:13, color:C.gold, fontWeight:700, display:"flex",
                         alignItems:"center", gap:6 }}>
-            â¡ {user.is_admin ? "â" : user.tokens} tokens
+            ⚡ {user.is_admin ? "∞" : user.tokens} tokens
           </div>
           <button style={css.btn(C.emerald)} onClick={() => onNav("new")}>+ New Job</button>
           {user.email==="layzphotos@gmail.com" && <button style={css.btn(C.field, C.gold)} onClick={() => onNav("access")}>Manage Access</button>}
@@ -334,16 +334,16 @@ function Header({ user, onLogout, onNav }) {
   )
 }
 
-// ââ LANDING âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── LANDING ───────────────────────────────────────────────────────
 
 function Landing({ onNav }) {
   const features = [
-    ["ð","Any URL","YouTube, TikTok, Vimeo, Twitter, 1000+ sites"],
-    ["ð¤","AI Clip Picking","Claude finds the best viral moments automatically"],
-    ["ð¥","Virality Score","Every clip scored 0â100 so you know what to post first"],
-    ["ð","Smart Reframe","Follow-cam crops 9:16 tracking the speaker"],
-    ["ð¬","Styled Subtitles","Word-timed, 6 fonts, custom colours"],
-    ["ðï¸","Face Blur/Track","Auto-detect and blur selected people"],
+    ["🔗","Any URL","YouTube, TikTok, Vimeo, Twitter, 1000+ sites"],
+    ["🤖","AI Clip Picking","Claude finds the best viral moments automatically"],
+    ["🔥","Virality Score","Every clip scored 0–100 so you know what to post first"],
+    ["📐","Smart Reframe","Follow-cam crops 9:16 tracking the speaker"],
+    ["💬","Styled Subtitles","Word-timed, 6 fonts, custom colours"],
+    ["👁️","Face Blur/Track","Auto-detect and blur selected people"],
   ]
   return (
     <div style={{ maxWidth:900, margin:"0 auto", padding:"60px 24px" }}>
@@ -352,7 +352,7 @@ function Landing({ onNav }) {
                       background:`linear-gradient(135deg,${C.gold},${C.emerald})`,
                       WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
                       marginBottom:16 }}>
-          Turn Any Video Into<br/>Viral Shorts â Instantly
+          Turn Any Video Into<br/>Viral Shorts — Instantly
         </div>
         <p style={{ color:C.dim, fontSize:18, marginBottom:32, maxWidth:540, margin:"0 auto 32px" }}>
           AI picks the best moments, scores their virality, cuts the clips, adds subtitles,
@@ -361,7 +361,7 @@ function Landing({ onNav }) {
         <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
           <button style={{ ...css.btn(C.emerald), fontSize:16, padding:"14px 32px",
                            borderRadius:10 }} onClick={() => onNav("register")}>
-            Start Free â 5 Tokens
+            Start Free — 5 Tokens
           </button>
           <button style={{ ...css.btn(C.field, C.text), fontSize:16, padding:"14px 32px",
                            borderRadius:10, border:`1px solid ${C.border}` }}
@@ -369,19 +369,19 @@ function Landing({ onNav }) {
             See Pricing
           </button>
         </div>
-        <p style={{ color:C.dim, fontSize:12, marginTop:12 }}>No credit card Â· 0.5 tokens per clip</p>
+        <p style={{ color:C.dim, fontSize:12, marginTop:12 }}>No credit card · 0.5 tokens per clip</p>
         <p style={{ color:C.dim, fontSize:12.5, marginTop:8 }}>
           Post straight to YouTube today — <b style={{color:C.gold}}>Instagram, TikTok & Facebook coming soon</b> (waiting on platform approval)</p>
       </div>
 
       {/* Virality demo */}
       <div style={{ ...css.card, marginBottom:32, border:`1px solid ${C.emerald}30` }}>
-        <div style={css.sec}>ð¥ Virality Scoring â Know What to Post</div>
+        <div style={css.sec}>🔥 Virality Scoring — Know What to Post</div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {[
-            [94, "Mic Drop",        "0:34 â 1:04", "She literally said she'd never do it â then did exactly that"],
-            [81, "Relatable Story", "2:12 â 2:42", "The 'I just wanted coffee' spiral that hits too close to home"],
-            [63, "Tutorial Gold",   "4:01 â 4:31", "Step-by-step breakdown of the editing process"],
+            [94, "Mic Drop",        "0:34 – 1:04", "She literally said she'd never do it — then did exactly that"],
+            [81, "Relatable Story", "2:12 – 2:42", "The 'I just wanted coffee' spiral that hits too close to home"],
+            [63, "Tutorial Gold",   "4:01 – 4:31", "Step-by-step breakdown of the editing process"],
           ].map(([score, tag, time, reason]) => (
             <div key={tag} style={{ display:"flex", alignItems:"center", gap:12,
                                     background:C.field, borderRadius:8, padding:"10px 14px" }}>
@@ -424,7 +424,7 @@ function Landing({ onNav }) {
   )
 }
 
-// ââ PRICING âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── PRICING ───────────────────────────────────────────────────────
 
 function Pricing({ token, onNav }) {
   const plans = [
@@ -457,10 +457,10 @@ function Pricing({ token, onNav }) {
       <h1 style={{ textAlign:"center", color:C.gold, marginBottom:4,
                   fontFamily:"'Georgia', serif", fontWeight:400, fontSize:36 }}>Pricing</h1>
       <p style={{ textAlign:"center", color:C.dim, marginBottom:8 }}>
-        <strong style={{ color:C.gold }}>0.5 tokens per clip</strong> â cheaper than Opus Clip, no compromises
+        <strong style={{ color:C.gold }}>0.5 tokens per clip</strong> — cheaper than Opus Clip, no compromises
       </p>
       <p style={{ textAlign:"center", color:C.dim, fontSize:13, marginBottom:40 }}>
-        Opus Clip charges $19â$49/mo. We charge $12.99â$29.99 for more clips.
+        Opus Clip charges $19–$49/mo. We charge $12.99–$29.99 for more clips.
       </p>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:48 }}>
@@ -478,9 +478,9 @@ function Pricing({ token, onNav }) {
             <div style={{ color:C.gold, fontSize:28, fontWeight:900 }}>{p.price}</div>
             <div style={{ color:C.dim, fontSize:12, marginBottom:4 }}>{p.period}</div>
             <div style={{ color:C.emerald, fontWeight:700, marginBottom:4 }}>{p.tokens} tokens</div>
-            <div style={{ color:C.gold, fontSize:13, fontWeight:600, marginBottom:12 }}>â {p.clips}</div>
+            <div style={{ color:C.gold, fontSize:13, fontWeight:600, marginBottom:12 }}>≈ {p.clips}</div>
             <ul style={{ listStyle:"none", padding:0, margin:"0 0 16px", fontSize:13, color:C.dim }}>
-              {p.features.map(f => <li key={f} style={{ padding:"2px 0" }}>â {f}</li>)}
+              {p.features.map(f => <li key={f} style={{ padding:"2px 0" }}>✓ {f}</li>)}
             </ul>
             {p.id !== "free" ? (
               <button style={{ ...css.btn(p.highlight ? C.emerald : C.field,
@@ -519,7 +519,7 @@ function Pricing({ token, onNav }) {
   )
 }
 
-// ââ AUTH ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── AUTH ──────────────────────────────────────────────────────────
 
 function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, altLabel, error, note }) {
   const [email, setEmail] = useState("")
@@ -551,7 +551,7 @@ function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, 
         <button style={{ ...css.btn(C.emerald), width:"100%", padding:"12px",
                          fontSize:15, opacity:busy?.6:1 }}
                 onClick={go} disabled={busy}>
-          {busy ? "â¦" : submitLabel}
+          {busy ? "…" : submitLabel}
         </button>
         <div style={{ textAlign:"center", marginTop:16, fontSize:13, color:C.dim }}>
           {altText} <span style={{ color:C.emerald, cursor:"pointer" }}
@@ -590,11 +590,11 @@ function Register({ onLogin, onNav }) {
     try {
       const r = await apiFetch("/auth/register",{method:"POST",body:JSON.stringify({email,password:pass})})
       onLogin(r.token, {email:r.email,tokens:r.tokens,plan:r.plan,is_admin:r.is_admin||false,can_connect_socials:r.can_connect_socials||false,email_verified:r.email_verified})
-      // Show "check your email" nudge (non-blocking â they can still use the app)
+      // Show "check your email" nudge (non-blocking — they can still use the app)
       if (!r.email_verified) onNav("check-email")
     } catch(e) { setErr(e.message) }
   }
-  return <AuthForm title="Create Account" sub="5 free tokens â no credit card"
+  return <AuthForm title="Create Account" sub="5 free tokens — no credit card"
                    submitLabel="Sign Up Free" onSubmit={go} onNav={onNav}
                    altText="Have an account?" altPage="login" altLabel="Login" error={err}
                    note={<>By creating an account you agree to our{" "}
@@ -603,12 +603,12 @@ function Register({ onLogin, onNav }) {
 }
 
 
-// ââ CHECK EMAIL PAGE ââââââââââââââââââââââââââââââââââââââââââââââ
+// ── CHECK EMAIL PAGE ──────────────────────────────────────────────
 function CheckEmail({ onNav }) {
   return (
     <div style={{ maxWidth:440, margin:"80px auto", padding:"0 24px", textAlign:"center" }}>
       <div style={css.card}>
-        <div style={{ fontSize:40, marginBottom:16 }}>ð¬</div>
+        <div style={{ fontSize:40, marginBottom:16 }}>📬</div>
         <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400,
                      marginBottom:12 }}>Check your email</h2>
         <p style={{ color:C.dim, fontSize:14, lineHeight:1.7,
@@ -619,7 +619,7 @@ function CheckEmail({ onNav }) {
         <div style={{ background:C.field, borderRadius:4, padding:"12px 16px",
                       fontSize:12, color:C.dim, fontFamily:"Arial,sans-serif",
                       marginBottom:20, border:`1px solid ${C.border}` }}>
-          â¹ï¸ You can still use the app while waiting â verification just keeps your account secure.
+          ℹ️ You can still use the app while waiting — verification just keeps your account secure.
         </div>
         <button style={{ ...css.btn(C.emerald, C.dark), width:"100%", padding:"12px" }}
                 onClick={() => onNav("dashboard")}>
@@ -630,7 +630,7 @@ function CheckEmail({ onNav }) {
   )
 }
 
-// ââ VERIFY EMAIL PAGE âââââââââââââââââââââââââââââââââââââââââââââ
+// ── VERIFY EMAIL PAGE ─────────────────────────────────────────────
 function VerifyEmail({ onNav }) {
   const [status, setStatus] = useState("verifying")
   const [msg,    setMsg]    = useState("")
@@ -651,13 +651,13 @@ function VerifyEmail({ onNav }) {
       <div style={css.card}>
         {status === "verifying" && (
           <>
-            <div style={{ fontSize:36, marginBottom:12 }}>â³</div>
-            <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400 }}>Verifyingâ¦</h2>
+            <div style={{ fontSize:36, marginBottom:12 }}>⏳</div>
+            <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400 }}>Verifying…</h2>
           </>
         )}
         {status === "success" && (
           <>
-            <div style={{ fontSize:36, marginBottom:12 }}>â</div>
+            <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
             <h2 style={{ color:C.emerald, fontFamily:"'Georgia',serif",
                          fontWeight:400, marginBottom:12 }}>Email verified!</h2>
             <p style={{ color:C.dim, fontSize:14, fontFamily:"Arial,sans-serif",
@@ -670,7 +670,7 @@ function VerifyEmail({ onNav }) {
         )}
         {status === "error" && (
           <>
-            <div style={{ fontSize:36, marginBottom:12 }}>â</div>
+            <div style={{ fontSize:36, marginBottom:12 }}>❌</div>
             <h2 style={{ color:C.red, fontFamily:"'Georgia',serif",
                          fontWeight:400, marginBottom:12 }}>Link invalid</h2>
             <p style={{ color:C.dim, fontSize:14, fontFamily:"Arial,sans-serif",
@@ -684,7 +684,7 @@ function VerifyEmail({ onNav }) {
   )
 }
 
-// ââ FORGOT PASSWORD PAGE ââââââââââââââââââââââââââââââââââââââââââ
+// ── FORGOT PASSWORD PAGE ──────────────────────────────────────────
 function ForgotPassword({ onNav }) {
   const [email,  setEmail]  = useState("")
   const [sent,   setSent]   = useState(false)
@@ -714,7 +714,7 @@ function ForgotPassword({ onNav }) {
         </div>
         {sent ? (
           <>
-            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>ð¬</div>
+            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>📬</div>
             <p style={{ color:C.dim, fontSize:14, textAlign:"center", lineHeight:1.7,
                         fontFamily:"Arial,sans-serif", marginBottom:20 }}>
               If that email is registered, we sent a reset link.<br/>Check your inbox!
@@ -735,11 +735,11 @@ function ForgotPassword({ onNav }) {
             <button style={{ ...css.btn(C.emerald, C.dark), width:"100%",
                              padding:"12px", opacity:busy?.6:1 }}
                     onClick={go} disabled={busy}>
-              {busy ? "Sendingâ¦" : "Send Reset Link"}
+              {busy ? "Sending…" : "Send Reset Link"}
             </button>
             <div style={{ textAlign:"center", marginTop:16, fontSize:13, color:C.dim }}>
               <span style={{ color:C.emerald, cursor:"pointer" }}
-                    onClick={() => onNav("login")}>â Back to Login</span>
+                    onClick={() => onNav("login")}>← Back to Login</span>
             </div>
           </>
         )}
@@ -748,7 +748,7 @@ function ForgotPassword({ onNav }) {
   )
 }
 
-// ââ RESET PASSWORD PAGE âââââââââââââââââââââââââââââââââââââââââââ
+// ── RESET PASSWORD PAGE ───────────────────────────────────────────
 function ResetPassword({ onNav }) {
   const [pass,   setPass]   = useState("")
   const [pass2,  setPass2]  = useState("")
@@ -782,7 +782,7 @@ function ResetPassword({ onNav }) {
         </div>
         {done ? (
           <>
-            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>â</div>
+            <div style={{ textAlign:"center", fontSize:40, marginBottom:12 }}>✅</div>
             <p style={{ color:C.dim, fontSize:14, textAlign:"center",
                         fontFamily:"Arial,sans-serif", marginBottom:20 }}>
               Your password has been reset. Log in with your new password!
@@ -794,7 +794,7 @@ function ResetPassword({ onNav }) {
           <>
             {!token && <div style={{ color:C.red, fontSize:13, marginBottom:16,
                                      fontFamily:"Arial,sans-serif" }}>
-              â ï¸ Invalid reset link â please request a new one.
+              ⚠️ Invalid reset link — please request a new one.
             </div>}
             {err && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
                                   borderRadius:4, padding:"10px 14px", color:C.red,
@@ -809,7 +809,7 @@ function ResetPassword({ onNav }) {
             <button style={{ ...css.btn(C.emerald, C.dark), width:"100%",
                              padding:"12px", opacity:busy?.6:1 }}
                     onClick={go} disabled={busy || !token}>
-              {busy ? "Updatingâ¦" : "Set New Password"}
+              {busy ? "Updating…" : "Set New Password"}
             </button>
           </>
         )}
@@ -818,7 +818,7 @@ function ResetPassword({ onNav }) {
   )
 }
 
-// ââ DASHBOARD âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── DASHBOARD ─────────────────────────────────────────────────────
 
 function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   const [jobs,    setJobs]    = useState([])
@@ -862,7 +862,7 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
               const cap = await apiFetch("/payments/paypal/capture",
                 {method:"POST",body:JSON.stringify({order_id:r.order_id,pack})}, token)
               setUser(u => ({...u, tokens:cap.tokens}))
-              alert(`â Added ${cap.added} tokens!`)
+              alert(`✅ Added ${cap.added} tokens!`)
             } catch(e) {}
           }
         },1000)
@@ -880,14 +880,14 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
         <div style={css.card}>
           <div style={css.sec}>Token Balance</div>
           <div style={{ fontSize:42, fontWeight:900, color:C.gold }}>
-            {user.is_admin ? "â" : user.tokens}
+            {user.is_admin ? "∞" : user.tokens}
           </div>
           <div style={{ color:C.dim, fontSize:13 }}>
-            {user.is_admin ? "Unlimited clips" : `â ${Math.floor(user.tokens / TOKENS_PER_CLIP)} clips remaining`}
+            {user.is_admin ? "Unlimited clips" : `≈ ${Math.floor(user.tokens / TOKENS_PER_CLIP)} clips remaining`}
           </div>
           {user.next_free_job_at && (
             <div style={{ marginTop:8, color:C.orange, fontSize:12 }}>
-              â³ Free reset: {new Date(user.next_free_job_at).toLocaleDateString()}
+              ⏳ Free reset: {new Date(user.next_free_job_at).toLocaleDateString()}
             </div>
           )}
         </div>
@@ -898,13 +898,13 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
               <div style={{ fontSize:22, fontWeight:700, color:C.gold,
                             fontFamily:"'Georgia', serif" }}>Admin</div>
               <div style={{ color:C.emerald, fontSize:13, marginTop:4, fontFamily:"Arial,sans-serif" }}>
-                â No token limits
+                ✓ No token limits
               </div>
               <div style={{ color:C.emerald, fontSize:13, fontFamily:"Arial,sans-serif" }}>
-                â No clip limits
+                ✓ No clip limits
               </div>
               <div style={{ color:C.emerald, fontSize:13, fontFamily:"Arial,sans-serif" }}>
-                â No weekly restrictions
+                ✓ No weekly restrictions
               </div>
             </>
           ) : (
@@ -913,12 +913,12 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                             textTransform:"capitalize" }}>{user.plan}</div>
               {user.plan === "free" && (
                 <div style={{ color:C.dim, fontSize:13, marginTop:4 }}>
-                  1 video/week Â· max 3 clips
+                  1 video/week · max 3 clips
                 </div>
               )}
               <button style={{ ...css.btn(C.field, C.text), marginTop:8, fontSize:12 }}
                       onClick={() => onNav("pricing")}>
-                Upgrade â
+                Upgrade →
               </button>
             </>
           )}
@@ -931,10 +931,10 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
               <div key={k} style={{ display:"flex", gap:6 }}>
                 <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11,
                                  padding:"5px 10px", flex:1 }}
-                        onClick={() => buyTopup(k,"stripe")}>ð³ {l}</button>
+                        onClick={() => buyTopup(k,"stripe")}>💳 {l}</button>
                 <button style={{ ...css.btn(C.field, C.dim), fontSize:11,
                                  padding:"5px 10px", border:`1px solid ${C.border}` }}
-                        onClick={() => buyTopup(k,"paypal")}>ð¿ï¸</button>
+                        onClick={() => buyTopup(k,"paypal")}>🅿️</button>
               </div>
             ))}
           </div>
@@ -969,7 +969,7 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                               }, 1000);
                             }
                           })
-                          .catch(() => alert('YouTube connection failed â try again'));
+                          .catch(() => alert('YouTube connection failed — try again'));
                       } else {
                         alert(p + " posting is coming soon! We're waiting on " + p + "'s approval - it will light up here the moment it's ready.")
                       }
@@ -986,17 +986,17 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                     border:`1px solid ${C.emerald}30` }}>
         <div>
           <div style={{ fontWeight:700, fontSize:16 }}>Create New Shorts</div>
-          <div style={{ color:C.dim, fontSize:13 }}>Paste a URL Â· AI picks the viral moments</div>
+          <div style={{ color:C.dim, fontSize:13 }}>Paste a URL · AI picks the viral moments</div>
         </div>
         <button style={{ ...css.btn(C.emerald), fontSize:15, padding:"12px 28px" }}
-                onClick={() => onNav("new")}>â¡ New Job</button>
+                onClick={() => onNav("new")}>⚡ New Job</button>
       </div>
 
       <div style={css.sec}>Recent Jobs</div>
-      {loading ? <div style={{ color:C.dim }}>Loadingâ¦</div> :
+      {loading ? <div style={{ color:C.dim }}>Loading…</div> :
        jobs.length === 0 ? (
         <div style={{ ...css.card, textAlign:"center", color:C.dim, padding:40 }}>
-          No jobs yet â create your first!
+          No jobs yet — create your first!
         </div>
        ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -1007,7 +1007,7 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                 <div style={{ width:10, height:10, borderRadius:"50%",
                               background:sCol(j.status), flexShrink:0 }}/>
                 <div style={{ flex:1, fontSize:14, fontWeight:600 }}>
-                  Job {j.id.slice(0,8)}â¦
+                  Job {j.id.slice(0,8)}…
                 </div>
                 <div style={{ color:sCol(j.status), fontSize:12,
                               fontWeight:700, textTransform:"uppercase" }}>{j.status}</div>
@@ -1016,29 +1016,29 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                   <button style={{ ...css.btn(C.gold, C.dark), fontSize:11,
                                    padding:"4px 12px", letterSpacing:1 }}
                           onClick={e => { e.stopPropagation(); onViewClips(j.id) }}>
-                    ð¬ Pick Clips
+                    🎬 Pick Clips
                   </button>
                 )}
                 {(j.status === "queued" || j.status === "failed") && (
                   <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11,
                                    padding:"4px 12px", letterSpacing:1 }}
                           onClick={e => retryJob(j.id, e)}>
-                    â¶ Start
+                    ▶ Start
                   </button>
                 )}
                 <div style={{ color:C.dim, fontSize:11 }}>
                   {new Date(j.created_at).toLocaleDateString()}
                 </div>
-                <div style={{ color:C.dim, fontSize:12 }}>{selJob?.id===j.id ? "â²" : "â¼"}</div>
+                <div style={{ color:C.dim, fontSize:12 }}>{selJob?.id===j.id ? "▲" : "▼"}</div>
               </div>
               {j.status === "processing" && (
                 <div style={{ marginTop:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between",
                                 fontSize:11, color:C.dim, marginBottom:4,
                                 fontFamily:"Arial,sans-serif" }}>
-                    <span>âï¸ Processing clipsâ¦</span>
+                    <span>⚙️ Processing clips…</span>
                     <span style={{ color:C.gold }}>
-                      {j.clips_count > 0 ? `${j.clips_count} done` : "Startingâ¦"}
+                      {j.clips_count > 0 ? `${j.clips_count} done` : "Starting…"}
                     </span>
                   </div>
                   <div style={{ height:4, background:C.border, borderRadius:2 }}>
@@ -1057,7 +1057,7 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
               {j.status === "queued" && (
                 <div style={{ marginTop:6, fontSize:11, color:C.dim,
                               fontFamily:"Arial,sans-serif" }}>
-                  â³ Waiting in queueâ¦
+                  ⏳ Waiting in queue…
                 </div>
               )}
 
@@ -1078,11 +1078,11 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                           <div key={c.filename} style={{ display:"flex", gap:6 }}>
                             <button onClick={() => setPreview({url:`${API}${c.url}`, filename:c.filename})}
                                     style={{ ...css.btn(C.field, C.gold), fontSize:12, border:`1px solid ${C.gold}40` }}>
-                              â¶ Preview
+                              ▶ Preview
                             </button>
                             <button onClick={() => downloadWithAuth(`${API}${c.url}`, c.filename, token)}
                                     style={{ ...css.btn(C.field, C.emerald), fontSize:12, border:`1px solid ${C.emerald}30` }}>
-                              â¬ï¸ {c.filename.slice(0,28)}â¦
+                              ⬇️ {c.filename.slice(0,28)}…
                             </button>
                           </div>
                         ))}
@@ -1100,7 +1100,7 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
 }
 
 
-// ââ CLIP PICKER âââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── CLIP PICKER ───────────────────────────────────────────────────
 function ClipPicker({ jobId, token, onNav }) {
   const [job,      setJob]      = useState(null)
   const [loading,  setLoading]  = useState(true)
@@ -1144,13 +1144,13 @@ function ClipPicker({ jobId, token, onNav }) {
   }, [token])
 
   if (loading) return (
-    <div style={{ textAlign:"center", padding:80, color:C.dim }}>Loading clipsâ¦</div>
+    <div style={{ textAlign:"center", padding:80, color:C.dim }}>Loading clips…</div>
   )
 
   // Sort clips by score descending
   const clips = [...(job?.clips || [])].sort((a, b) => (b.score||0) - (a.score||0))
   const scoreCol = s => s >= 85 ? C.emerald : s >= 70 ? C.gold : s >= 55 ? C.orange : C.dim
-  const scoreIcon = s => s >= 85 ? "ð¥" : s >= 70 ? "â¡" : s >= 55 ? "â¨" : "ð¤"
+  const scoreIcon = s => s >= 85 ? "🔥" : s >= 70 ? "⚡" : s >= 55 ? "✨" : "💤"
 
   const toggleSelect = (fn) => {
     setSelected(prev => {
@@ -1185,10 +1185,10 @@ function ClipPicker({ jobId, token, onNav }) {
         publish_at: ytAt ? new Date(ytAt).toISOString() : "",
       })
       const r = await apiFetch("/social/youtube/upload?" + ps, {method:"POST"}, token)
-      setYtMsg("â Uploaded! " + (r.youtube_url||""))
+      setYtMsg("✅ Uploaded! " + (r.youtube_url||""))
       setYtBusy(false)
     } catch(e) {
-      setYtMsg("â " + e.message)
+      setYtMsg("❌ " + e.message)
       setYtBusy(false)
     }
   }
@@ -1198,12 +1198,12 @@ function ClipPicker({ jobId, token, onNav }) {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
         <button style={{ ...css.btn(C.field, C.dim), fontSize:12, padding:"6px 14px" }}
-                onClick={() => onNav("dashboard")}>â Dashboard</button>
+                onClick={() => onNav("dashboard")}>← Dashboard</button>
         <div style={{ flex:1 }}>
           <h2 style={{ color:C.gold, fontFamily:"'Georgia',serif", fontWeight:400,
                        fontSize:24, margin:0 }}>Your Clips</h2>
           <div style={{ color:C.dim, fontSize:12, fontFamily:"Arial,sans-serif", marginTop:2 }}>
-            {clips.length} clips Â· Sorted by virality score
+            {clips.length} clips · Sorted by virality score
           </div>
         </div>
         {timeLeft && (
@@ -1212,7 +1212,7 @@ function ClipPicker({ jobId, token, onNav }) {
                         borderRadius:4, padding:"6px 14px", fontSize:12,
                         color: timeLeft === "Expired" ? C.red : C.gold,
                         fontFamily:"Arial,sans-serif" }}>
-            â± {timeLeft}
+            ⏱ {timeLeft}
           </div>
         )}
       </div>
@@ -1233,7 +1233,7 @@ function ClipPicker({ jobId, token, onNav }) {
                       onClick={clearAll}>Clear</button>
               <button style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"5px 16px" }}
                       onClick={downloadSelected}>
-                â¬ï¸ Download {selected.size} Selected
+                ⬇️ Download {selected.size} Selected
               </button>
             </>
           )}
@@ -1292,9 +1292,9 @@ function ClipPicker({ jobId, token, onNav }) {
                       <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif",
                                     marginTop:2 }}>
                         {Math.floor(clip.start/60)}:{String(Math.round(clip.start%60)).padStart(2,"0")}
-                        {" â "}
+                        {" – "}
                         {Math.floor(clip.end/60)}:{String(Math.round(clip.end%60)).padStart(2,"0")}
-                        {" Â· "}
+                        {" · "}
                         {clip.duration}s
                       </div>
                     )}
@@ -1309,22 +1309,22 @@ function ClipPicker({ jobId, token, onNav }) {
                                 border:`2px solid ${sel ? C.gold : C.border}`,
                                 background: sel ? C.gold : "transparent",
                                 display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {sel && <span style={{ color:C.dark, fontSize:13, fontWeight:900 }}>â</span>}
+                    {sel && <span style={{ color:C.dark, fontSize:13, fontWeight:900 }}>✓</span>}
                   </div>
 
                   {/* Preview + Download */}
                   <button style={{ ...css.btn(C.field, C.gold), fontSize:11, padding:"6px 14px", flexShrink:0, border:`1px solid ${C.gold}40` }}
                           onClick={e => { e.stopPropagation(); setPickerPreview({url:`${API}${clip.url}`, filename:clip.filename}) }}>
-                    â¶
+                    ▶
                   </button>
                   <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
                           onClick={e => { e.stopPropagation(); downloadClip(clip) }}>
-                    â¬ï¸ Download
+                    ⬇️ Download
                   </button>
                 {ytConn && (
                   <button style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
                           onClick={e => { e.stopPropagation(); setYtModal(clip); setYtTitle(clip.hook||""); setYtDesc(""); setYtAt("") }}>
-                    â¶ï¸ YouTube
+                    ▶️ YouTube
                   </button>
                 )}
                 </div>
@@ -1342,14 +1342,14 @@ function ClipPicker({ jobId, token, onNav }) {
       {clips.length > 0 && (
         <div style={{ textAlign:"center", marginTop:28, color:C.dim,
                       fontSize:12, fontFamily:"Arial,sans-serif" }}>
-          Clips auto-delete 48 hours after processing Â· Make a new job any time
+          Clips auto-delete 48 hours after processing · Make a new job any time
         </div>
       )}
 
       {ytModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setYtModal(null);setYtMsg("")}}>
           <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:18,color:C.text}}>â¶ï¸ Post to YouTube</div>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>▶️ Post to YouTube</div>
             <div style={{color:C.muted,fontSize:12}}>Clip: {ytModal.filename}</div>
             <input placeholder="Title *" value={ytTitle} onChange={e=>setYtTitle(e.target.value)}
                    style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
@@ -1360,10 +1360,10 @@ function ClipPicker({ jobId, token, onNav }) {
               <input type="datetime-local" value={ytAt} onChange={e=>setYtAt(e.target.value)}
                    style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none",colorScheme:"dark"}} />
             </div>
-            {ytMsg && <div style={{fontSize:13,color:ytMsg.startsWith("â")?C.emerald:"#ef4444"}}>{ytMsg}</div>}
+            {ytMsg && <div style={{fontSize:13,color:ytMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{ytMsg}</div>}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <button style={css.btn(C.muted,C.dark)} onClick={()=>{setYtModal(null);setYtMsg("")}}>Cancel</button>
-              <button style={{...css.btn(C.red,C.dark),opacity:ytBusy||!ytTitle?0.5:1}} disabled={ytBusy||!ytTitle} onClick={uploadToYt}>{ytBusy?"Uploadingâ¦":"Upload"}</button>
+              <button style={{...css.btn(C.red,C.dark),opacity:ytBusy||!ytTitle?0.5:1}} disabled={ytBusy||!ytTitle} onClick={uploadToYt}>{ytBusy?"Uploading…":"Upload"}</button>
             </div>
           </div>
         </div>
@@ -1372,7 +1372,7 @@ function ClipPicker({ jobId, token, onNav }) {
   )
 }
 
-// ââ NEW JOB âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── NEW JOB ───────────────────────────────────────────────────────
 
 const FONTS    = ["Arial","Impact","Montserrat","Bebas Neue","Anton","Oswald"]
 const COLOURS  = ["white","yellow","emerald","gold","red","cyan"]
@@ -1456,7 +1456,7 @@ function NewJob({ user, setUser, token, onNav }) {
     <div style={{ maxWidth:700, margin:"0 auto", padding:"32px 24px" }}>
       <h2 style={{ color:C.gold, marginBottom:4, fontFamily:"'Georgia', serif",
                   fontWeight:400, fontSize:28 }}>New Shorts Job</h2>
-      <p style={{ color:C.dim, marginBottom:24 }}>Paste a URL Â· configure Â· get viral clips</p>
+      <p style={{ color:C.dim, marginBottom:24 }}>Paste a URL · configure · get viral clips</p>
 
       {err && <div style={{ background:"#FF555520", border:`1px solid ${C.red}`,
                             borderRadius:8, padding:"10px 14px", color:C.red,
@@ -1466,10 +1466,10 @@ function NewJob({ user, setUser, token, onNav }) {
       <div style={{ ...css.card, marginBottom:16 }}>
         <div style={css.sec}>Video URL</div>
         <input style={css.input}
-               placeholder="https://youtube.com/watch?v=â¦  or any video URL"
+               placeholder="https://youtube.com/watch?v=…  or any video URL"
                value={url} onChange={e=>setUrl(e.target.value)} />
         <div style={{ color:C.dim, fontSize:11, marginTop:6 }}>
-          YouTube Â· TikTok Â· Vimeo Â· Twitter Â· Instagram Â· 1000+ sites
+          YouTube · TikTok · Vimeo · Twitter · Instagram · 1000+ sites
         </div>
       </div>
 
@@ -1490,7 +1490,7 @@ function NewJob({ user, setUser, token, onNav }) {
           <Sel label="Output format" value={format} options={FORMATS} onChange={setFormat} />
         </div>
         <Toggle label="AI picks best moments + virality scoring" colour={C.gold}
-                hint="Claude finds viral moments and scores each 0â100"
+                hint="Claude finds viral moments and scores each 0–100"
                 value={aiPick} onChange={setAiPick} />
         <Toggle label="Audio normalization"
                 hint="No more volume spikes between clips"
@@ -1515,7 +1515,7 @@ function NewJob({ user, setUser, token, onNav }) {
       {/* Face */}
       <div style={{ ...css.card, marginBottom:16 }}>
         <div style={css.sec}>Face Tracking</div>
-        <Toggle label="Smart Reframe â follow speaker" colour={C.gold}
+        <Toggle label="Smart Reframe — follow speaker" colour={C.gold}
                 hint="Dynamic 9:16 crop that pans to track the face"
                 value={reframe} onChange={setReframe} />
         <Toggle label="Face Blur" hint="Auto-detect and blur all faces"
@@ -1529,10 +1529,10 @@ function NewJob({ user, setUser, token, onNav }) {
                       padding:"14px 16px", fontFamily:"Arial,sans-serif" }}>
           <div style={{ color:C.gold, fontWeight:700, fontSize:12,
                         letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>
-            â Admin Access
+            ★ Admin Access
           </div>
           <div style={{ color:C.dim, fontSize:13 }}>
-            No tokens will be deducted Â· No clip limits Â· No restrictions
+            No tokens will be deducted · No clip limits · No restrictions
           </div>
         </div>
       ) : (
@@ -1552,7 +1552,7 @@ function NewJob({ user, setUser, token, onNav }) {
                          flex:2, padding:"14px", fontSize:16,
                          opacity:busy?.6:1 }}
                 onClick={submit} disabled={!canAfford||busy}>
-          {busy ? "Starting jobâ¦" : `â¡ Make ${safeCount} Shorts (${cost} tokens)`}
+          {busy ? "Starting job…" : `⚡ Make ${safeCount} Shorts (${cost} tokens)`}
         </button>
       </div>
     </div>
@@ -1560,7 +1560,7 @@ function NewJob({ user, setUser, token, onNav }) {
 }
 
 
-// ââ MANAGE ACCESS (main admin only) ââââââââââââââââââââââââââââââ
+// ── MANAGE ACCESS (main admin only) ──────────────────────────────
 
 function ManageAccess({ token, onNav }) {
   const [users,   setUsers]   = useState([])
@@ -1590,14 +1590,14 @@ function ManageAccess({ token, onNav }) {
         <div style={{ fontSize:22, fontWeight:700, color:C.gold, fontFamily:"'Georgia', serif" }}>
           Manage Social-Connect Access
         </div>
-        <button style={css.btn(C.field, C.dim)} onClick={() => onNav("dashboard")}>â Dashboard</button>
+        <button style={css.btn(C.field, C.dim)} onClick={() => onNav("dashboard")}>← Dashboard</button>
       </div>
       <div style={{ color:C.dim, fontSize:13, marginBottom:20 }}>
         Toggle which accounts can connect their own social media accounts (YouTube, TikTok, Instagram, Facebook).
       </div>
       {err && <div style={{ color:C.red, marginBottom:12 }}>{err}</div>}
       {loading ? (
-        <div style={{ color:C.dim }}>Loadingâ¦</div>
+        <div style={{ color:C.dim }}>Loading…</div>
       ) : (
         <div style={css.card}>
           {users.map(u => (
@@ -1606,13 +1606,13 @@ function ManageAccess({ token, onNav }) {
               <div>
                 <div style={{ color:C.text, fontSize:14 }}>{u.email}</div>
                 <div style={{ color:C.dim, fontSize:12 }}>
-                  {u.plan} {u.is_admin ? "Â· admin" : ""}
+                  {u.plan} {u.is_admin ? "· admin" : ""}
                 </div>
               </div>
               <button style={css.btn(u.can_connect_socials ? C.emerald : C.field,
                                       u.can_connect_socials ? C.dark : C.dim)}
                       onClick={() => toggle(u)}>
-                {u.can_connect_socials ? "â Access Granted" : "Grant Access"}
+                {u.can_connect_socials ? "✓ Access Granted" : "Grant Access"}
               </button>
             </div>
           ))}
