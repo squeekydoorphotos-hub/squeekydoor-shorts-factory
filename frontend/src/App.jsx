@@ -224,6 +224,10 @@ export default function App() {
     if (p.get("reset")) {
       setPage("reset")
     }
+    // Direct links to policy pages
+    const path = window.location.pathname
+    if (path === "/privacy") setPage("privacy")
+    if (path === "/terms")   setPage("terms")
   }, [token])
 
   return (
@@ -242,6 +246,9 @@ export default function App() {
       {page==="forgot"    && <ForgotPassword onNav={setPage} />}
       {page==="reset"     && <ResetPassword onNav={setPage} />}
       {page==="check-email" && <CheckEmail onNav={setPage} />}
+      {page==="privacy"   && <PrivacyPolicy />}
+      {page==="terms"     && <TermsOfService />}
+      <Footer onNav={setPage} />
     </div>
   )
 }
@@ -478,7 +485,7 @@ function Pricing({ token, onNav }) {
 
 // ââ AUTH ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, altLabel, error }) {
+function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, altLabel, error, note }) {
   const [email, setEmail] = useState("")
   const [pass,  setPass]  = useState("")
   const [busy,  setBusy]  = useState(false)
@@ -503,6 +510,8 @@ function AuthForm({ title, sub, submitLabel, onSubmit, onNav, altText, altPage, 
         <label style={css.label}>Password</label>
         <input style={{ ...css.input, marginBottom:20 }} type="password" value={pass}
                onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} />
+        {note && <div style={{ fontSize:11.5, color:C.dim, marginBottom:14,
+                                textAlign:"center", lineHeight:1.5 }}>{note}</div>}
         <button style={{ ...css.btn(C.emerald), width:"100%", padding:"12px",
                          fontSize:15, opacity:busy?.6:1 }}
                 onClick={go} disabled={busy}>
@@ -551,7 +560,10 @@ function Register({ onLogin, onNav }) {
   }
   return <AuthForm title="Create Account" sub="5 free tokens â no credit card"
                    submitLabel="Sign Up Free" onSubmit={go} onNav={onNav}
-                   altText="Have an account?" altPage="login" altLabel="Login" error={err} />
+                   altText="Have an account?" altPage="login" altLabel="Login" error={err}
+                   note={<>By creating an account you agree to our{" "}
+                     <span style={{ color:C.emerald, cursor:"pointer" }} onClick={()=>onNav("terms")}>Terms of Service</span>{" "}and{" "}
+                     <span style={{ color:C.emerald, cursor:"pointer" }} onClick={()=>onNav("privacy")}>Privacy Policy</span>.</>} />
 }
 
 
@@ -1570,5 +1582,184 @@ function ManageAccess({ token, onNav }) {
         </div>
       )}
     </div>
+  )
+}
+
+
+// -- FOOTER --------------------------------------------------------
+function Footer({ onNav }) {
+  const link = { color:C.dim, cursor:"pointer", textDecoration:"underline" }
+  return (
+    <div style={{ borderTop:`1px solid ${C.border}`, marginTop:60, padding:"24px 16px",
+                  textAlign:"center", fontSize:12.5, color:C.dim, lineHeight:2 }}>
+      <span style={link} onClick={()=>onNav("privacy")}>Privacy Policy</span>
+      {"  ·  "}
+      <span style={link} onClick={()=>onNav("terms")}>Terms of Service</span>
+      {"  ·  "}
+      <a href="mailto:squeekydoorphotos@gmail.com" style={link}>squeekydoorphotos@gmail.com</a>
+      <div>© 2026 Squeeky Door Productions · SDP Shorts</div>
+    </div>
+  )
+}
+
+// -- POLICY PAGES --------------------------------------------------
+function PolicyShell({ title, children }) {
+  return (
+    <div style={{ maxWidth:760, margin:"40px auto 0", padding:"0 24px" }}>
+      <h1 style={{ color:C.gold, fontFamily:"'Georgia', serif", fontWeight:400 }}>{title}</h1>
+      <div style={{ color:C.dim, fontSize:13, marginBottom:24 }}>Last updated: June 11, 2026</div>
+      <div style={{ ...css.card, lineHeight:1.7, fontSize:14.5 }}>{children}</div>
+    </div>
+  )
+}
+function PolicyH({ children }) {
+  return <h3 style={{ color:C.gold, marginTop:26, marginBottom:8,
+                      fontFamily:"'Georgia', serif", fontWeight:400 }}>{children}</h3>
+}
+
+function PrivacyPolicy() {
+  const a = { color:C.emerald }
+  return (
+    <PolicyShell title="Privacy Policy">
+      <p>SDP Shorts is run by Squeeky Door Productions ("we", "us") in Spokane, Washington.
+      This policy explains what information we collect, why, and what we do with it — in plain
+      English. The short version: we collect only what the app needs to work, and we never sell
+      your data.</p>
+
+      <PolicyH>What we collect</PolicyH>
+      <p><b>Account info.</b> Your email address and a securely hashed version of your password
+      (we cannot see your actual password). We also store your plan, token balance, and account
+      creation date.</p>
+      <p><b>Payment info.</b> Payments are processed by Stripe and PayPal. Your card or bank
+      details go directly to them and never touch our servers. We store only a customer
+      reference ID and your purchase history so we can credit your account.</p>
+      <p><b>Your content.</b> The video links you submit, the clips we generate for you, and
+      processing logs needed to run and troubleshoot jobs.</p>
+      <p><b>YouTube connection (optional).</b> If you choose to connect your YouTube account,
+      we store an access token plus your channel name and ID, used only to upload clips you
+      explicitly choose to publish and to show your connection status.</p>
+      <p><b>Cookies.</b> We use one essential cookie to keep you logged in. No advertising or
+      tracking cookies.</p>
+
+      <PolicyH>What we never do</PolicyH>
+      <p>We do not sell, rent, or trade your personal information. We do not run third-party
+      ad trackers. We do not read your videos for anything other than generating your clips.</p>
+
+      <PolicyH>How we use your information</PolicyH>
+      <p>To provide the service (process videos, generate clips, manage your token balance),
+      to process payments, to send account emails (verification, password resets), and to
+      respond when you contact support.</p>
+
+      <PolicyH>Who we share it with</PolicyH>
+      <p>Only the service providers required to run the app: Stripe and PayPal (payments),
+      our hosting providers (the app runs on Railway and Netlify), and Google/YouTube if you
+      connect your channel. Each receives only what it needs to do its job. We may also
+      disclose information if the law requires it.</p>
+
+      <PolicyH>YouTube API Services</PolicyH>
+      <p>SDP Shorts uses YouTube API Services. By connecting your YouTube account you also
+      agree to the <a style={a} href="https://www.youtube.com/t/terms" target="_blank"
+      rel="noreferrer">YouTube Terms of Service</a>, and Google's handling of your data is
+      described in the <a style={a} href="https://policies.google.com/privacy" target="_blank"
+      rel="noreferrer">Google Privacy Policy</a>. We access only the ability to upload videos
+      you choose and basic channel info. You can disconnect at any time from your dashboard,
+      or revoke our access in your{" "}
+      <a style={a} href="https://security.google.com/settings/security/permissions"
+      target="_blank" rel="noreferrer">Google security settings</a>. When you disconnect,
+      we delete the stored tokens.</p>
+
+      <PolicyH>How long we keep things</PolicyH>
+      <p>Account data is kept while your account is active. Generated clips are stored so you
+      can download them and may be removed after a reasonable period. To delete your account
+      and data, email us at <a style={a}
+      href="mailto:squeekydoorphotos@gmail.com">squeekydoorphotos@gmail.com</a> and we will
+      delete it within 30 days, except records we must keep for legal or accounting reasons
+      (like payment history).</p>
+
+      <PolicyH>Security</PolicyH>
+      <p>All traffic is encrypted with HTTPS, passwords are hashed, and login sessions use
+      secure httpOnly cookies. No system is 100% secure, but we take reasonable measures to
+      protect your data.</p>
+
+      <PolicyH>Children</PolicyH>
+      <p>SDP Shorts is not intended for children under 13, and we do not knowingly collect
+      their information.</p>
+
+      <PolicyH>Changes & contact</PolicyH>
+      <p>If we change this policy, we will update this page and the date above. Questions?
+      Email <a style={a}
+      href="mailto:squeekydoorphotos@gmail.com">squeekydoorphotos@gmail.com</a>.</p>
+    </PolicyShell>
+  )
+}
+
+function TermsOfService() {
+  const a = { color:C.emerald }
+  return (
+    <PolicyShell title="Terms of Service">
+      <p>These terms are an agreement between you and Squeeky Door Productions ("we", "us"),
+      Spokane, Washington, covering your use of SDP Shorts. By creating an account or using
+      the service, you agree to them.</p>
+
+      <PolicyH>What SDP Shorts is</PolicyH>
+      <p>SDP Shorts is an AI-powered tool that turns videos into short clips, including
+      automatic transcription, captions, titles, and clip selection.</p>
+
+      <PolicyH>AI-generated content disclaimer</PolicyH>
+      <p><b>Clips, transcriptions, captions, titles, and scores are generated by artificial
+      intelligence and may contain errors, inaccuracies, or awkward results.</b> Always review
+      AI-generated content before publishing it anywhere. We are not responsible for the
+      accuracy of AI output or for the consequences of publishing it unreviewed.</p>
+
+      <PolicyH>Your account</PolicyH>
+      <p>You must be at least 13 to use SDP Shorts and at least 18 (or have a parent's
+      permission) to make purchases. Keep your password private — you are responsible for
+      activity on your account.</p>
+
+      <PolicyH>Payments, tokens & refunds</PolicyH>
+      <p>The service uses tokens, available through plans and top-ups. <b>All sales are
+      final.</b> Purchases, including unused tokens and subscription fees, are non-refundable
+      except where the law requires otherwise. We may change pricing, and will give notice of
+      changes that affect an active subscription. Tokens have no cash value and cannot be
+      transferred.</p>
+
+      <PolicyH>Your content</PolicyH>
+      <p>You must own the videos you submit or have permission to use them. You keep ownership
+      of your videos and the clips we generate from them. You give us only the limited
+      permission needed to process and store them so the service can work. Do not submit
+      content that is illegal or that infringes someone else's rights — you are solely
+      responsible for the content you process and publish.</p>
+
+      <PolicyH>Publishing to YouTube</PolicyH>
+      <p>If you connect a YouTube account and publish clips, you are responsible for
+      complying with the <a style={a} href="https://www.youtube.com/t/terms" target="_blank"
+      rel="noreferrer">YouTube Terms of Service</a> and any other platform rules.</p>
+
+      <PolicyH>Acceptable use</PolicyH>
+      <p>Don't abuse the service: no attempts to hack, overload, or reverse-engineer it, no
+      reselling access, and no using it for anything unlawful. We may suspend or close
+      accounts that violate these terms; tokens on a closed account in violation are
+      forfeited.</p>
+
+      <PolicyH>Service availability</PolicyH>
+      <p>We work hard to keep SDP Shorts running, but it is provided "as is" without
+      warranties of any kind, and we do not guarantee uninterrupted service. We may modify
+      or discontinue features.</p>
+
+      <PolicyH>Limitation of liability</PolicyH>
+      <p>To the maximum extent allowed by law, our total liability to you for any claim is
+      limited to the amount you paid us in the 12 months before the claim, and we are not
+      liable for indirect, incidental, or consequential damages (such as lost profits or
+      lost content).</p>
+
+      <PolicyH>Governing law & changes</PolicyH>
+      <p>These terms are governed by the laws of the State of Washington, USA. If we make
+      material changes, we will update this page and the date above; continuing to use the
+      service means you accept the updated terms.</p>
+
+      <PolicyH>Contact</PolicyH>
+      <p>Questions about these terms? Email <a style={a}
+      href="mailto:squeekydoorphotos@gmail.com">squeekydoorphotos@gmail.com</a>.</p>
+    </PolicyShell>
   )
 }
