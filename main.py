@@ -65,6 +65,36 @@ load_dotenv()
 # ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+
+# -- social-token encryption at rest --------------------------------
+# OAuth tokens (YouTube etc.) are encrypted before hitting the DB.
+# Key is derived from SECRET_KEY, so no extra env var is needed.
+import base64 as _b64, hashlib as _hashlib
+from cryptography.fernet import Fernet as _Fernet
+
+def _build_token_fernet():
+    if not SECRET_KEY:
+        return None
+    digest = _hashlib.sha256(("social-token-enc:" + SECRET_KEY).encode()).digest()
+    return _Fernet(_b64.urlsafe_b64encode(digest))
+
+_TOKEN_FERNET = _build_token_fernet()
+
+def enc_token(val):
+    """Encrypt an OAuth token for storage. None/empty passes through."""
+    if not val or _TOKEN_FERNET is None:
+        return val
+    return _TOKEN_FERNET.encrypt(val.encode()).decode()
+
+def dec_token(val):
+    """Decrypt a stored OAuth token. Falls back to plaintext for
+    tokens saved before encryption was added (legacy rows)."""
+    if not val or _TOKEN_FERNET is None:
+        return val
+    try:
+        return _TOKEN_FERNET.decrypt(val.encode()).decode()
+    except Exception:
+        return val
 if not SECRET_KEY:
     raise RuntimeError(
         "SECRET_KEY environment variable is not set — refusing to start. "
@@ -1387,8 +1417,8 @@ def youtube_callback(code: str, state: str, db: Session = Depends(get_db)):
         if not sa:
             sa = SocialAccount(user_id=user_id, platform="youtube")
             db.add(sa)
-        sa.access_token    = tokens.get("access_token")
-        sa.refresh_token   = tokens.get("refresh_token")
+        sa.access_token    = enc_token(tokens.get("access_token"))
+        sa.refresh_token   = enc_token(tokens.get("refresh_token"))
         sa.account_name    = ch_name
         sa.token_expires_at = datetime.utcnow() + timedelta(seconds=tokens.get("expires_in", 3600))
         db.commit()
@@ -1449,22 +1479,22 @@ def youtube_upload(
         import requests as _req, json as _json
         sa = db.query(SocialAccount).filter(
             SocialAccount.user_id == current_user.id,
-            SocialAcc#ount.platform == "youtube"
+            SocialAccount.platform == "youtube"
         ).first()
         if not sa:
             raise HTTPException(status_code=400, detail="YouTube not connected. Connect it in Settings first.")
         # Refresh token if expired
-        token = sa.access_token
+        token = dec_token(sa.access_token)
         if sa.token_expires_at and sa.token_expires_at < datetime.utcnow():
             r = _req.post("https://oauth2.googleapis.com/token", data={
                 "client_id": YOUTUBE_CLIENT_ID,
                 "client_secret": YOUTUBE_CLIENT_SECRET,
-                "refresh_token": sa.refresh_token,
+                "refresh_token": dec_token(sa.refresh_token),
                 "grant_type": "refresh_token",
             }, timeout=20)
             td = r.json()
             token = td.get("access_token", token)
-            sa.access_token = token
+            sa.access_token = enc_token(token)
             sa.token_expires_at = datetime.utcnow() + timedelta(seconds=td.get("expires_in", 3600))
             db.commit()
         # Validate job ownership
