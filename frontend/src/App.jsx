@@ -636,7 +636,7 @@ function VerifyEmail({ onNav }) {
           <>
             <div style={{ fontSize:36, marginBottom:12 }}>â</div>
             <h2 style={{ color:C.red, fontFamily:"'Georgia',serif",
-                         fontWeight:400, marginBottom:12 }}>Link invalid</hÊ
+                         fontWeight:400, marginBottom:12 }}>Link invalid</h2>
             <p style={{ color:C.dim, fontSize:14, fontFamily:"Arial,sans-serif",
                         marginBottom:20 }}>{msg || "This link has expired or already been used."}</p>
             <button style={{ ...css.btn(C.field, C.text), width:"100%", padding:"12px" }}
