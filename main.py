@@ -42,7 +42,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import (create_engine, Column, String, Integer, Float,
-                        Boolean, DateTime, Text, ForeignKey)
+                        Boolean, DateTime, Text, ForeignKey, func)
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -604,11 +604,11 @@ class SubscribeIn(BaseModel):
 @app.post("/auth/register")
 @limiter.limit("3/minute")
 def register(request: Request, data: RegisterIn, response: Response, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == data.email).first():
+    if db.query(User).filter(func.lower(User.email) == data.email.lower().strip()).first():
         raise HTTPException(400, "Email already registered")
     validate_password(data.password)
     verify_tok = secrets.token_urlsafe(32)
-    user = User(email=data.email, hashed_pw=hash_pw(data.password),
+    user = User(email=data.email.lower().strip(), hashed_pw=hash_pw(data.password),
                 verify_token=verify_tok, email_verified=False)
     db.add(user); db.commit(); db.refresh(user)
     # Send verification email (non-blocking)
@@ -624,7 +624,7 @@ def register(request: Request, data: RegisterIn, response: Response, db: Session
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(request: Request, data: LoginIn, response: Response, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(func.lower(User.email) == data.email.lower().strip()).first()
     if not user or not verify_pw(data.password, user.hashed_pw):
         raise HTTPException(401, "Invalid email or password")
     tok = create_jwt(user.id)
@@ -714,7 +714,7 @@ class ResetIn(BaseModel):
 @app.post("/auth/forgot")
 @limiter.limit("3/minute")
 def forgot_password(request: Request, data: ForgotIn, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(func.lower(User.email) == data.email.lower().strip()).first()
     if user:
         tok = secrets.token_urlsafe(32)
         user.reset_token     = tok
