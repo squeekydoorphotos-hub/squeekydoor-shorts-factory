@@ -658,6 +658,39 @@ def logout(response: Response):
     response.delete_cookie("sdp_token")
     return {"ok": True}
 
+# ── Admin: manage social-connect access (main admin only) ────────
+def _require_main_admin(user: User = Depends(get_current_user)):
+    if user.email != MAIN_ADMIN_EMAIL:
+        raise HTTPException(403, "Only the main admin can manage access")
+    return user
+
+
+@app.get("/admin/users")
+def admin_list_users(admin: User = Depends(_require_main_admin),
+                      db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    return [{"id": u.id, "email": u.email, "plan": u.plan,
+             "is_admin": u.email in ADMIN_EMAILS,
+             "can_connect_socials": u.can_connect_socials,
+             "created_at": u.created_at} for u in users]
+
+
+class SocialAccessIn(BaseModel):
+    enabled: bool
+
+
+@app.post("/admin/users/{user_id}/social-access")
+def admin_set_social_access(user_id: str, data: SocialAccessIn,
+                            admin: User = Depends(_require_main_admin),
+                            db: Session = Depends(get_db)):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    target.can_connect_socials = data.enabled
+    db.commit()
+    return {"ok": True, "email": target.email, "can_connect_socials": target.can_connect_socials}
+
+
 # ── Admin: refund support (main admin only) ──────────────────────
 @app.get("/admin/refund-check/{email}")
 def admin_refund_check(email: str,
@@ -724,38 +757,6 @@ def admin_log_refund(data: RefundLogIn,
     return {"ok": True, "email": target.email, "new_token_balance": target.tokens,
             "refund_recorded_usd": -abs(data.amount_usd)}
 
-
-# ── Admin: manage social-connect access (main admin only) ────────
-def _require_main_admin(user: User = Depends(get_current_user)):
-    if user.email != MAIN_ADMIN_EMAIL:
-        raise HTTPException(403, "Only the main admin can manage access")
-    return user
-
-
-@app.get("/admin/users")
-def admin_list_users(admin: User = Depends(_require_main_admin),
-                      db: Session = Depends(get_db)):
-    users = db.query(User).order_by(User.created_at.desc()).all()
-    return [{"id": u.id, "email": u.email, "plan": u.plan,
-             "is_admin": u.email in ADMIN_EMAILS,
-             "can_connect_socials": u.can_connect_socials,
-             "created_at": u.created_at} for u in users]
-
-
-class SocialAccessIn(BaseModel):
-    enabled: bool
-
-
-@app.post("/admin/users/{user_id}/social-access")
-def admin_set_social_access(user_id: str, data: SocialAccessIn,
-                            admin: User = Depends(_require_main_admin),
-                            db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == user_id).first()
-    if not target:
-        raise HTTPException(404, "User not found")
-    target.can_connect_socials = data.enabled
-    db.commit()
-    return {"ok": True, "email": target.email, "can_connect_socials": target.can_connect_socials}
 
 
 # ── Email verify route ────────────────────────────────────────────
