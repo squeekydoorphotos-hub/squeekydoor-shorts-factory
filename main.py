@@ -1,10 +1,10 @@
 """
-âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-â   SDP SHORTS WEB  â  Backend API  v1.0                         â
-â   Squeeky Door Productions  |  squeekydoorproductions.com       â
-âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+╔═════════════════════════════════════════════════════════════════╗
+║   SDP SHORTS WEB  —  Backend API  v1.0                         ║
+║   Squeeky Door Productions  |  squeekydoorproductions.com       ║
+╚═════════════════════════════════════════════════════════════════╝
 
-FastAPI backend:  auth Â· jobs Â· tokens Â· Stripe Â· PayPal
+FastAPI backend:  auth · jobs · tokens · Stripe · PayPal
 
 ENV VARS needed (.env):
     SECRET_KEY          = any random 32-char string
@@ -20,7 +20,7 @@ ENV VARS needed (.env):
     FRONTEND_URL        = https://your-netlify-site.netlify.app
 """
 
-# ââ bcrypt / passlib compatibility patch ââââââââââââââââââââââââââ
+# ── bcrypt / passlib compatibility patch ──────────────────────────
 try:
     import bcrypt as _bcrypt
     if not hasattr(_bcrypt, "__about__"):
@@ -60,9 +60,9 @@ from email.mime.multipart import MIMEMultipart
 
 load_dotenv()
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  CONFIG
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 
@@ -106,7 +106,7 @@ TOKEN_EXP_HOURS = 24 * 2   # 2 days JWT
 CLAUDE_API_KEY  = os.getenv("CLAUDE_API_KEY", "")
 FRONTEND_URL    = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-# ââ Email config ââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ── Email config ──────────────────────────────────────────────────
 EMAIL_FROM    = os.getenv("EMAIL_FROM", "squeekydoorphotos@gmail.com")
 EMAIL_PASS    = os.getenv("EMAIL_APP_PASS", "")
 EMAIL_ENABLED = bool(EMAIL_PASS)
@@ -128,7 +128,7 @@ YOUTUBE_SCOPES        = ["https://www.googleapis.com/auth/youtube.upload",
 
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
-# ââ Admin / owner accounts â bypass all token checks ââââââââââââââ
+# ── Admin / owner accounts — bypass all token checks ──────────────
 ADMIN_EMAILS = {
     "thelabsdp206@gmail.com",
     "squeekydoorphotos@gmail.com",
@@ -137,7 +137,7 @@ ADMIN_EMAILS = {
     "wimplobeats@gmail.com",
 }
 
-# Main admin â only this account can grant/revoke social-connect access for others
+# Main admin — only this account can grant/revoke social-connect access for others
 MAIN_ADMIN_EMAIL = "layzphotos@gmail.com"
 
 
@@ -146,7 +146,7 @@ FONTS_DIR = Path(__file__).parent / "fonts"
 JOBS_DIR.mkdir(exist_ok=True)
 FONTS_DIR.mkdir(exist_ok=True)
 
-# Find ffmpeg/ffprobe â Railway/Nix puts them in non-standard paths
+# Find ffmpeg/ffprobe — Railway/Nix puts them in non-standard paths
 def _find_bin(name: str) -> str:
     found = shutil.which(name)
     if found:
@@ -195,9 +195,9 @@ FONTS_CONFIG = {
                      "url": "https://fonts.gstatic.com/s/oswald/v53/TK3_WkUHHAIjg75cFRf3bXL8LICs1_Fv.ttf"},
 }
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  DATABASE
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 DB_PATH = Path(os.getenv("DB_PATH", "/tmp/sdp_shorts.db"))
 engine  = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
@@ -265,7 +265,7 @@ class SocialAccount(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# ââ Lightweight auto-migration: add new columns to existing tables â
+# ── Lightweight auto-migration: add new columns to existing tables ─
 # (Base.metadata.create_all only creates brand-new tables; it will NOT
 #  add new columns to a table that already exists on disk. Without this,
 #  the app crashes with "no such column: users.can_connect_socials".)
@@ -291,9 +291,9 @@ def get_db():
     finally:
         db.close()
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  AUTH
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -332,9 +332,9 @@ def get_current_user(request: Request, authorization: str = Header(None),
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  PAYPAL HELPERS
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 def _paypal_token() -> str:
     r = http_req.post(f"{PAYPAL_BASE}/v1/oauth2/token",
@@ -406,15 +406,15 @@ def validate_video_url(url: str) -> str:
     return url.strip()
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  FONT DOWNLOADER
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 def ensure_font(font_name: str) -> Optional[str]:
     """Download font file if needed. Returns path or None for system fonts."""
     cfg = FONTS_CONFIG.get(font_name, FONTS_CONFIG["Arial"])
     if cfg["file"] is None:
-        return None  # System font â ffmpeg will find it
+        return None  # System font — ffmpeg will find it
     path = FONTS_DIR / cfg["file"]
     if not path.exists():
         try:
@@ -426,9 +426,9 @@ def ensure_font(font_name: str) -> Optional[str]:
             return None
     return str(path)
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  EMAIL HELPERS
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 def send_email(to: str, subject: str, html: str):
     """Send email via Gmail SMTP."""
@@ -484,23 +484,23 @@ def send_welcome_email(email: str):
     <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
       <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
       <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
-      <h2 style="color:#C9A443;font-weight:400">You're in! ð¬</h2>
+      <h2 style="color:#C9A443;font-weight:400">You're in! 🎬</h2>
       <p style="color:#888;line-height:1.6">Your account is verified and your <strong style="color:#C9A443">5 free tokens</strong> are ready to use.</p>
-      <p style="color:#888;line-height:1.6">Paste any video URL, let AI pick the viral moments, and download your clips â all within 48 hours before they auto-clear.</p>
+      <p style="color:#888;line-height:1.6">Paste any video URL, let AI pick the viral moments, and download your clips — all within 48 hours before they auto-clear.</p>
       <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
         Start Making Shorts
       </a>
-      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">0.5 tokens per clip Â· Clips available for 48 hours</p>
+      <p style="color:#555;font-size:12px;font-family:Arial,sans-serif">0.5 tokens per clip · Clips available for 48 hours</p>
     </div>""")
 
 def send_job_done_email(email: str, clips_count: int):
-    send_email(email, "Your clips are ready!!ð¬", f"""
+    send_email(email, "Your clips are ready!!🎬", f"""
     <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
       <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
       <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
-      <h2 style="color:#C9A443;font-weight:400">All done! ð</h2>
+      <h2 style="color:#C9A443;font-weight:400">All done! 🎉</h2>
       <p style="color:#888;line-height:1.6">We finished processing your video and made <strong style="color:#C9A443">{clips_count} clip(s)</strong> for you.</p>
-      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them â clips are available for 48 hours.</p>
+      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them — clips are available for 48 hours.</p>
       <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
         View My Clips
       </a>
@@ -509,13 +509,13 @@ def send_job_done_email(email: str, clips_count: int):
 
 
 def send_job_done_email(email: str, clips_count: int):
-    send_email(email, "Your clips are ready! ð¬", f"""
+    send_email(email, "Your clips are ready! 🎬", f"""
     <div style="background:#000;color:#ccc;font-family:Georgia,serif;padding:40px;max-width:520px;margin:0 auto">
       <div style="color:#C9A443;font-size:22px;font-weight:700;margin-bottom:8px">SDP Shorts</div>
       <div style="color:#4a8c5c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px">Squeeky Door Productions</div>
-      <h2 style="color:#C9A443;font-weight:400">All done! ð</h2>
+      <h2 style="color:#C9A443;font-weight:400">All done! 🎉</h2>
       <p style="color:#888;line-height:1.6">We finished processing your video and made <strong style="color:#C9A443">{clips_count} clip(s)</strong> for you.</p>
-      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them â clips are available for 48 hours.</p>
+      <p style="color:#888;line-height:1.6">Head back to your dashboard to preview and download them — clips are available for 48 hours.</p>
       <a href="{FRONTEND_URL}" style="display:inline-block;background:#4a8c5c;color:#000;text-decoration:none;padding:14px 32px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-radius:2px;margin:20px 0">
         View My Clips
       </a>
@@ -525,9 +525,9 @@ def send_job_done_email(email: str, clips_count: int):
 
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  APP
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 app = FastAPI(title="SDP Shorts Web API", version="1.0.0")
 
@@ -556,9 +556,9 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_SecurityHeadersMiddleware)
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  PYDANTIC SCHEMAS
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 class RegisterIn(BaseModel):
     email: str
@@ -597,9 +597,9 @@ class PayPalCaptureIn(BaseModel):
 class SubscribeIn(BaseModel):
     plan: str   # starter / pro / studio
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  AUTH ROUTES
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 @app.post("/auth/register")
 @limiter.limit("3/minute")
@@ -658,7 +658,7 @@ def logout(response: Response):
     response.delete_cookie("sdp_token")
     return {"ok": True}
 
-# ââ Admin: manage social-connect access (main admin only) ââââââââ
+# ── Admin: manage social-connect access (main admin only) ────────
 def _require_main_admin(user: User = Depends(get_current_user)):
     if user.email != MAIN_ADMIN_EMAIL:
         raise HTTPException(403, "Only the main admin can manage access")
@@ -691,7 +691,7 @@ def admin_set_social_access(user_id: str, data: SocialAccessIn,
     return {"ok": True, "email": target.email, "can_connect_socials": target.can_connect_socials}
 
 
-# ââ Email verify route ââââââââââââââââââââââââââââââââââââââââââââ
+# ── Email verify route ────────────────────────────────────────────
 @app.get("/auth/verify")
 def verify_email(token: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.verify_token == token).first()
@@ -732,7 +732,7 @@ def reset_password(data: ResetIn, db: Session = Depends(get_db)):
     if not user or not user.reset_token_exp:
         raise HTTPException(400, "Invalid or expired reset link")
     if datetime.utcnow() > user.reset_token_exp:
-        raise HTTPException(400, "Reset link has expired â request a new one")
+        raise HTTPException(400, "Reset link has expired — request a new one")
     validate_password(data.password)
     user.hashed_pw      = hash_pw(data.password)
     user.reset_token    = None
@@ -741,9 +741,9 @@ def reset_password(data: ResetIn, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  JOB ROUTES
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 @app.post("/jobs")
 def create_job(data: JobCreateIn,
@@ -816,11 +816,11 @@ def retry_job(job_id: str,
         raise HTTPException(404, "Job not found")
     # Set to processing immediately so UI updates right away
     job.status     = "processing"
-    job.log        = (job.log or "") + "\nð Retried â starting now\n"
+    job.log        = (job.log or "") + "\n🔄 Retried — starting now\n"
     job.updated_at = datetime.utcnow()
     db.commit()
     settings = json.loads(job.settings or "{}")
-    # Use a real thread â more reliable than BackgroundTasks for long-running work
+    # Use a real thread — more reliable than BackgroundTasks for long-running work
     t = threading.Thread(target=process_job, args=(job.id, settings), daemon=True)
     t.start()
     return {"ok": True, "job_id": job.id}
@@ -883,9 +883,9 @@ def _job_dict(j: Job) -> dict:
             "log": j.log, "clips": clips, "expires_at": expires_at,
             "created_at": j.created_at, "updated_at": j.updated_at}
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  PAYMENT ROUTES
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 @app.get("/plans")
 def get_plans():
@@ -930,7 +930,7 @@ def stripe_topup(data: TopupIn, user: User = Depends(get_current_user)):
         line_items=[{"price_data": {
             "currency": "usd",
             "unit_amount": int(pack["usd"] * 100),
-            "product_data": {"name": f"SDP Shorts â {pack['tokens']} tokens"},
+            "product_data": {"name": f"SDP Shorts — {pack['tokens']} tokens"},
         }, "quantity": 1}],
         success_url=f"{FRONTEND_URL}/dashboard?topup=success",
         cancel_url=f"{FRONTEND_URL}/dashboard",
@@ -970,7 +970,7 @@ def paypal_capture(data: PayPalCaptureIn, user: User = Depends(get_current_user)
     return {"tokens": user.tokens, "added": pack["tokens"]}
 
 
-# Stripe webhook â handles subscription renewals + one-time payments
+# Stripe webhook — handles subscription renewals + one-time payments
 @app.post("/webhooks/stripe")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -1013,7 +1013,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         if sub_id:
             user = db.query(User).filter(User.stripe_sub_id == sub_id).first()
             if user and user.plan in PLANS:
-                # Monthly renewal â add tokens
+                # Monthly renewal — add tokens
                 tokens = PLANS[user.plan]["tokens"]
                 user.tokens += tokens
                 txn = Transaction(user_id=user.id, kind="subscription",
@@ -1030,9 +1030,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     return {"ok": True}
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  JOB PROCESSOR  (runs in background)
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 def _db_session() -> Session:
     return SessionLocal()
@@ -1079,8 +1079,8 @@ def _save_clip_metadata(job_id: str, meta_list: list):
 
 def process_job(job_id: str, settings: dict):
     """
-    Full processing pipeline â runs in FastAPI BackgroundTasks thread.
-    Downloads video â picks clips â cuts them â applies features â saves to JOBS_DIR/job_id/
+    Full processing pipeline — runs in FastAPI BackgroundTasks thread.
+    Downloads video → picks clips → cuts them → applies features → saves to JOBS_DIR/job_id/
     """
     log = lambda m: _log_job(job_id, m)
     out_dir = JOBS_DIR / job_id
@@ -1089,7 +1089,7 @@ def process_job(job_id: str, settings: dict):
     tmp_dir.mkdir(exist_ok=True)
 
     _set_job_status(job_id, "processing")
-    log("ð Job started")
+    log("🚀 Job started")
 
     try:
         # Import processor functions (inside try so failures are caught)
@@ -1097,9 +1097,9 @@ def process_job(job_id: str, settings: dict):
                                 build_ass_content, extract_clip,
                                 smart_reframe, blur_faces_opencv)
         # 1. Download video
-        log(f"â¬ï¸  Downloading: {settings['source_url']}")
+        log(f"⬇️  Downloading: {settings['source_url']}")
         video_path = download_video(settings["source_url"], str(tmp_dir), log)
-        log(f"â Downloaded: {Path(video_path).name}")
+        log(f"✅ Downloaded: {Path(video_path).name}")
 
         # 2. Get duration
         dur = _ffprobe_duration(video_path)
@@ -1107,20 +1107,20 @@ def process_job(job_id: str, settings: dict):
             # Last resort: use file size to estimate (rough: ~1MB per 10s for 720p)
             fsize = Path(video_path).stat().st_size
             dur = max(30.0, fsize / 150000)
-            log(f"ð¹ Duration estimated: {dur:.1f}s (ffprobe couldn't read metadata)")
+            log(f"📹 Duration estimated: {dur:.1f}s (ffprobe couldn't read metadata)")
         else:
-            log(f"ð¹ Duration: {dur:.1f}s ({dur/60:.1f} min)")
+            log(f"📹 Duration: {dur:.1f}s ({dur/60:.1f} min)")
 
         # 3. Transcribe if needed (whisper optional)
         segments = []
         if settings.get("ai_pick") or settings.get("subtitles"):
-            log("ðï¸  Attempting transcriptionâ¦")
+            log("😙️  Attempting transcription…")
             try:
                 import whisper, threading as _th, subprocess as _sp
-                log("   Loading Whisper tiny modelâ¦")
+                log("   Loading Whisper tiny model…")
                 model = whisper.load_model("tiny")
 
-                tx_total = dur  # no cap â transcribe the full video
+                tx_total = dur  # no cap — transcribe the full video
 
                 # Break the audio into ~2-min chunks. This lets us:
                 #   1) handle videos of any length (no more 10-min wall),
@@ -1129,7 +1129,7 @@ def process_job(job_id: str, settings: dict):
                 CHUNK_LEN = 120
                 chunk_starts = list(range(0, max(int(tx_total), 1), CHUNK_LEN)) or [0]
                 total_chunks = len(chunk_starts)
-                log(f"   Splitting into {total_chunks} chunk(s) for transcriptionâ¦")
+                log(f"   Splitting into {total_chunks} chunk(s) for transcription…")
 
                 all_segments = []
                 for idx, start in enumerate(chunk_starts, start=1):
@@ -1139,7 +1139,7 @@ def process_job(job_id: str, settings: dict):
                              "-t", str(length), "-c", "copy", chunk_path],
                             capture_output=True, timeout=60)
                     if not Path(chunk_path).exists():
-                        log(f"   â ï¸  Couldn't extract chunk {idx}/{total_chunks} â skipping")
+                        log(f"   ⚠️  Couldn't extract chunk {idx}/{total_chunks} — skipping")
                         continue
 
                     # Run with a per-chunk timeout so one slow piece can't hang the whole job
@@ -1148,24 +1148,24 @@ def process_job(job_id: str, settings: dict):
                     t = _th.Thread(target=_run, daemon=True)
                     t.start(); t.join(timeout=180)
                     if result_box[0] is None:
-                        log(f"  #â ï¸  Chunk {idx}/{total_chunks} timed out â skipping")
+                        log(f"  #⚠️  Chunk {idx}/{total_chunks} timed out — skipping")
                     else:
                         for seg in result_box[0].get("segments", []):
                             seg["start"] = seg.get("start", 0) + start
                             seg["end"] = seg.get("end", 0) + start
                             all_segments.append(seg)
                         pct = round(idx / total_chunks * 100)
-                        log(f"   ðï¸  Transcribed chunk {idx}/{total_chunks} ({pct}%)")
+                        log(f"   🎙️  Transcribed chunk {idx}/{total_chunks} ({pct}%)")
 
                     try: Path(chunk_path).unlink()
                     except Exception: pass
 
                 segments = all_segments
-                log(f"â {len(segments)} transcript segments")
+                log(f"✅ {len(segments)} transcript segments")
             except ImportError:
-                log("â¹ï¸  Whisper not available â AI will pick by timestamp instead")
+                log("ℹ️  Whisper not available — AI will pick by timestamp instead")
             except Exception as e:
-                log(f"â ï¸  Transcription skipped: {e}")
+                log(f"⚠️  Transcription skipped: {e}")
 
 
         # 4. Pick clips
@@ -1174,11 +1174,11 @@ def process_job(job_id: str, settings: dict):
         clips    = []
 
         if settings.get("ai_pick") and CLAUDE_API_KEY and segments:
-            log(f"ð¤ Asking Claude to pick {count} clipsâ¦")
+            log(f"🤖 Asking Claude to pick {count} clips…")
             try:
                 clips = pick_clips_claude(segments, count, clip_len, CLAUDE_API_KEY, log)
             except Exception as e:
-                log(f"â ï¸  Claude failed: {e} â using evenly spaced")
+                log(f"⚠️  Claude failed: {e} — using evenly spaced")
         if not clips:
             clips = pick_clips_evenly(count, clip_len, dur)
 
@@ -1200,7 +1200,7 @@ def process_job(job_id: str, settings: dict):
             s = float(clip.get("start", 0))
             e = float(clip.get("end", s + clip_len))
 
-            # Enforce requested clip length â center the viral moment in the window
+            # Enforce requested clip length — center the viral moment in the window
             actual_len = e - s
             if actual_len < clip_len:
                 # Extend to fill the full requested duration
@@ -1221,9 +1221,9 @@ def process_job(job_id: str, settings: dict):
             e = min(e, dur)
 
             if e - s < 1:
-                log(f"â ï¸  Clip {i} too short after adjustment, skip"); continue
+                log(f"⚠️  Clip {i} too short after adjustment, skip"); continue
 
-            log(f"âï¸  Clip {i}/{total}: {s:.1f}s â {e:.1f}s ({e-s:.0f}s) | targeting {clip_len}s")
+            log(f"✂️  Clip {i}/{total}: {s:.1f}s → {e:.1f}s ({e-s:.0f}s) | targeting {clip_len}s")
 
             hook = clip.get("hook", f"Clip {i}")
             safe = "".join(c if c.isalnum() or c in " _-" else ""
@@ -1256,25 +1256,25 @@ def process_job(job_id: str, settings: dict):
                 if settings.get("smart_reframe"):
                     for p in paths:
                         if "_9x16" in p or (not both and vertical):
-                            log(f"  #ð¯ Smart reframeâ¦")
+                            log(f"  #🎯 Smart reframe…")
                             try:
                                 smart_reframe(p, p + "_rf.mp4", smoothness=0.3, log_fn=log)
                                 os.replace(p + "_rf.mp4", p)
                             except Exception as ex:
-                                log(f"  #â ï¸  Reframe failed: {ex}")
+                                log(f"  #⚠️  Reframe failed: {ex}")
 
                 # Face blur pass
                 if settings.get("face_blur"):
                     for p in paths:
-                        log(f"  #ðï¸  Face blurâ¦")
+                        log(f"  #👁️  Face blur…")
                         try:
                             blur_faces_opencv(p, p + "_bl.mp4", strength=5, log_fn=log)
                             os.replace(p + "_bl.mp4", p)
                         except Exception as ex:
-                            log(f"   â ï¸  Blur failed: {ex}")
+                            log(f"   ⚠️  Blur failed: {ex}")
 
                 made += 1
-                log(f"  #â Done")
+                log(f"  #✅ Done")
                 # Save clip metadata for the picker page
                 for path in paths:
                     fname = Path(path).name
@@ -1289,15 +1289,15 @@ def process_job(job_id: str, settings: dict):
                     })
                 _save_clip_metadata(job_id, saved_meta)
             except Exception as ex:
-                log(f"   â Failed: {ex}")
+                log(f"   ❌ Failed: {ex}")
 
         # Cleanup tmp
         shutil.rmtree(str(tmp_dir), ignore_errors=True)
 
         _set_job_status(job_id, "done", made)
-        log(f"\nð Done! {made}/{total} clips ready")
+        log(f"\n🎉 Done! {made}/{total} clips ready")
 
-        log(f"\nð Done! {made}/{total} clips ready")
+        log(f"\n🎉 Done! {made}/{total} clips ready")
 
         # Email the account holder that their clips are ready (non-blocking)
         try:
@@ -1315,7 +1315,7 @@ def process_job(job_id: str, settings: dict):
 
     except Exception as ex:
         _set_job_status(job_id, "failed")
-        log(f"\nð¥ Job failed: {ex}")
+        log(f"\n💥 Job failed: {ex}")
 
 
 def _ffprobe_duration(path: str) -> float:
@@ -1366,9 +1366,9 @@ def _ffprobe_duration(path: str) -> float:
 
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  YOUTUBE OAUTH + UPLOAD ROUTES
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 @app.get("/social/youtube/auth")
 def youtube_auth(current_user: User = Depends(get_current_user)):
@@ -1426,7 +1426,7 @@ def youtube_callback(code: str, state: str, db: Session = Depends(get_db)):
         return HTMLResponse(
             "<script>window.close();</script>"
             "<p style=\'font-family:sans-serif;text-align:center;margin-top:80px\'>"
-            "â YouTube connected! You can close this tab.</p>"
+            "✅ YouTube connected! You can close this tab.</p>"
         )
     except Exception as e:
         from fastapi.responses import HTMLResponse
@@ -1554,9 +1554,9 @@ def youtube_upload(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-#  ADMIN â YOUTUBE COOKIES UPLOAD
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN — YOUTUBE COOKIES UPLOAD
+# ══════════════════════════════════════════════════════════════════
 
 class CookiesIn(BaseModel):
     content: str  # Full Netscape cookie file text
@@ -1602,9 +1602,9 @@ def delete_cookies(user: User = Depends(get_current_user)):
         return {"ok": True, "deleted": str(path)}
     return {"ok": True, "deleted": None}
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 #  CLEANUP  (delete job files > 24 hours)
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════
 
 @app.on_event("startup")
 async def startup():
@@ -1615,7 +1615,7 @@ async def startup():
         stuck = db.query(Job).filter(Job.status == "processing").all()
         for j in stuck:
             j.status = "failed"
-            j.log = (j.log or "") + "\nâ ï¸ Marked failed on restart\n"
+            j.log = (j.log or "") + "\n⚠️ Marked failed on restart\n"
         if stuck:
             db.commit()
             print(f"[Startup] Marked {len(stuck)} stuck jobs as failed")
