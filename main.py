@@ -658,6 +658,73 @@ def logout(response: Response):
     response.delete_cookie("sdp_token")
     return {"ok": True}
 
+# ── Admin: refund support (main admin only) ──────────────────────
+@app.get("/admin/refund-check/{email}")
+def admin_refund_check(email: str,
+                       admin: User = Depends(_require_main_admin),
+                       db: Session = Depends(get_db)):
+    """Everything needed to decide a refund request per the 14-day policy."""
+    target = db.query(User).filter(func.lower(User.email) == email.lower().strip()).first()
+    if not target:
+        raise HTTPException(404, "No account with that email")
+    txs = db.query(Transaction).filter(Transaction.user_id == target.id)\
+            .order_by(Transaction.created_at.desc()).all()
+    jobs = db.query(Job).filter(Job.user_id == target.id).all()
+    now = datetime.utcnow()
+    purchases = []
+    for t in txs:
+        days = (now - t.created_at).days if t.created_at else None
+        used_since = sum((j.clips_count or 0) for j in jobs
+                         if j.created_at and t.created_at and j.created_at >= t.created_at) * TOKENS_PER_CLIP
+        if t.kind == "refund":
+            hint = "ALREADY A REFUND RECORD"
+        elif days is not None and days <= 14 and used_since == 0:
+            hint = "FULL REFUND OK (within 14 days, no tokens used since)"
+        elif days is not None and days <= 14:
+            hint = f"PARTIAL AT DISCRETION ({used_since} tokens used since purchase)"
+        else:
+            hint = "OUTSIDE 14-DAY WINDOW (refund not required by policy)"
+        purchases.append({"date": t.created_at, "days_ago": days, "kind": t.kind,
+                          "provider": t.provider, "amount_usd": t.amount_usd,
+                          "tokens": t.tokens, "ref_id": t.ref_id,
+                          "tokens_used_since": used_since, "policy_hint": hint})
+    return {"email": target.email, "plan": target.plan,
+            "token_balance": target.tokens,
+            "account_created": target.created_at,
+            "total_jobs": len(jobs),
+            "total_clips": sum((j.clips_count or 0) for j in jobs),
+            "purchases": purchases}
+
+
+class RefundLogIn(BaseModel):
+    email: str
+    amount_usd: float
+    tokens_removed: float = 0
+    provider: str = "stripe"
+    ref_id: str = ""
+    note: str = ""
+
+
+@app.post("/admin/refunds")
+def admin_log_refund(data: RefundLogIn,
+                     admin: User = Depends(_require_main_admin),
+                     db: Session = Depends(get_db)):
+    """Log a refund AFTER processing it in the Stripe/PayPal dashboard.
+    Removes the refunded tokens from the account and records the transaction."""
+    target = db.query(User).filter(func.lower(User.email) == data.email.lower().strip()).first()
+    if not target:
+        raise HTTPException(404, "No account with that email")
+    target.tokens = max(0.0, (target.tokens or 0.0) - abs(data.tokens_removed or 0.0))
+    ref = (data.ref_id + (" | " + data.note if data.note else ""))[:250]
+    tx = Transaction(user_id=target.id, kind="refund", provider=data.provider,
+                     amount_usd=-abs(data.amount_usd), tokens=-abs(data.tokens_removed or 0.0),
+                     ref_id=ref)
+    db.add(tx)
+    db.commit()
+    return {"ok": True, "email": target.email, "new_token_balance": target.tokens,
+            "refund_recorded_usd": -abs(data.amount_usd)}
+
+
 # ── Admin: manage social-connect access (main admin only) ────────
 def _require_main_admin(user: User = Depends(get_current_user)):
     if user.email != MAIN_ADMIN_EMAIL:
