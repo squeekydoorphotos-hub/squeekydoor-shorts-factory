@@ -5,6 +5,9 @@
   base    = "frontend"
   command = "npm run build"
   publish = "dist"
+  # Skip the build when nothing frontend-related changed (saves deploy credits:
+  # backend-only commits from health checks/fixes no longer trigger deploys)
+  ignore  = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../netlify.toml"
 
 # ─────────────────────────────────────────────────────────────────
 # SECURITY HEADERS  (applied to every response)
