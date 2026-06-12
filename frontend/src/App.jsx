@@ -253,7 +253,19 @@ export default function App() {
         ::-webkit-scrollbar-track { background: #05070D; }
         ::-webkit-scrollbar-thumb { background: #1D2738; border-radius: 6px; }
         ::-webkit-scrollbar-thumb:hover { background: #2A3850; }
+        @keyframes sdpDrift  { 0%,100%{ transform:translate(0,0) rotate(-7deg) }
+                               50%   { transform:translate(38px,-26px) rotate(-3deg) } }
+        @keyframes sdpDrift2 { 0%,100%{ transform:translate(0,0) rotate(5deg) }
+                               50%   { transform:translate(-46px,22px) rotate(9deg) } }
+        @keyframes sdpSpin   { from{ transform:rotate(0deg) } to{ transform:rotate(360deg) } }
+        @keyframes sdpFloat  { 0%,100%{ transform:translateY(0) rotate(-12deg) }
+                               50%   { transform:translateY(-24px) rotate(-9deg) } }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+        }
       `}</style>
+      <CinemaBackdrop />
+      <div style={{ position:"relative", zIndex:1 }}>
       <div style={{ textAlign:"center", padding:"7px 16px", fontSize:12.5,
                     fontFamily:"'Segoe UI', Arial, sans-serif", color:C.text,
                     background:"linear-gradient(90deg, rgba(212,175,90,0.14), rgba(65,185,121,0.14))",
@@ -280,6 +292,7 @@ export default function App() {
       {page==="privacy"   && <PrivacyPolicy />}
       {page==="terms"     && <TermsOfService />}
       <Footer onNav={setPage} />
+      </div>
     </div>
   )
 }
@@ -1814,5 +1827,79 @@ function TermsOfService() {
       <p>Questions about these terms? Email <a style={a}
       href="mailto:squeekydoorphotos@gmail.com">squeekydoorphotos@gmail.com</a>.</p>
     </PolicyShell>
+  )
+}
+
+
+// -- CINEMA BACKDROP (animated, behind all content) ------------------
+function CameraSvg({ size=500, colour="#D4AF5A", spinDur="26s" }) {
+  const spinA = { transformBox:"fill-box", transformOrigin:"center",
+                  animation:`sdpSpin ${spinDur} linear infinite` }
+  const spinB = { ...spinA, animationDirection:"reverse" }
+  const s = { stroke:colour, strokeWidth:3, fill:"none" }
+  const spokes = (cx) => (
+    <>
+      <circle cx={cx} cy="80" r="52" {...s}/>
+      <circle cx={cx} cy="80" r="14" {...s}/>
+      <line x1={cx} y1="28" x2={cx} y2="132" {...s}/>
+      <line x1={cx-52} y1="80" x2={cx+52} y2="80" {...s}/>
+      <line x1={cx-37} y1="43" x2={cx+37} y2="117" {...s}/>
+      <line x1={cx+37} y1="43" x2={cx-37} y2="117" {...s}/>
+    </>
+  )
+  return (
+    <svg width={size} height={size*0.81} viewBox="0 0 420 340" fill="none">
+      <g style={spinA}>{spokes(130)}</g>
+      <g style={spinB}>{spokes(252)}</g>
+      <rect x="80" y="138" width="240" height="116" rx="14" {...s}/>
+      <circle cx="122" cy="196" r="18" {...s}/>
+      <circle cx="122" cy="196" r="7"  {...s}/>
+      <line x1="168" y1="170" x2="296" y2="170" {...s}/>
+      <line x1="168" y1="222" x2="296" y2="222" {...s}/>
+      <rect x="320" y="166" width="54" height="60" rx="8" {...s}/>
+      <circle cx="396" cy="196" r="19" {...s}/>
+      <circle cx="396" cy="196" r="9"  {...s}/>
+      <line x1="200" y1="254" x2="200" y2="300" {...s}/>
+      <line x1="200" y1="300" x2="164" y2="336" {...s}/>
+      <line x1="200" y1="300" x2="236" y2="336" {...s}/>
+    </svg>
+  )
+}
+
+function FilmStripSvg({ colour="#D4AF5A" }) {
+  const s = { stroke:colour, strokeWidth:2, fill:"none" }
+  return (
+    <svg width="320" height="92" viewBox="0 0 320 92" fill="none">
+      <rect x="2" y="2" width="316" height="88" rx="8" {...s}/>
+      <line x1="2" y1="26" x2="318" y2="26" {...s}/>
+      <line x1="2" y1="66" x2="318" y2="66" {...s}/>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <g key={i}>
+          <rect x={14 + i*38} y="9"  width="16" height="10" rx="2" {...s}/>
+          <rect x={14 + i*38} y="73" width="16" height="10" rx="2" {...s}/>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function CinemaBackdrop() {
+  return (
+    <div aria-hidden="true"
+         style={{ position:"fixed", inset:0, zIndex:0, overflow:"hidden",
+                  pointerEvents:"none" }}>
+      <div style={{ position:"absolute", top:"6%", right:"-150px", opacity:0.07,
+                    animation:"sdpDrift 46s ease-in-out infinite" }}>
+        <CameraSvg size={540} colour="#D4AF5A" spinDur="28s" />
+      </div>
+      <div style={{ position:"absolute", bottom:"3%", left:"-170px", opacity:0.055,
+                    animation:"sdpDrift2 58s ease-in-out infinite" }}>
+        <CameraSvg size={430} colour="#41B979" spinDur="36s" />
+      </div>
+      <div style={{ position:"absolute", top:"56%", right:"10%", opacity:0.05,
+                    animation:"sdpFloat 20s ease-in-out infinite" }}>
+        <FilmStripSvg colour="#D4AF5A" />
+      </div>
+    </div>
   )
 }
