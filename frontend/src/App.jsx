@@ -2,28 +2,35 @@ import { useState, useEffect, useCallback } from "react"
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
 const C = {
-  dark:    "#000000",
-  card:    "#0D0D0D",
-  field:   "#141414",
-  emerald: "#4a8c5c",
-  gold:    "#C9A443",
-  dim:     "#888888",
-  text:    "#CCCCCC",
-  red:     "#CC4444",
-  orange:  "#CC7700",
-  border:  "#1E1E1E",
+  dark:    "#05070D",
+  card:    "#0C1220",
+  field:   "#101828",
+  emerald: "#41B979",
+  gold:    "#D4AF5A",
+  dim:     "#8A94A8",
+  text:    "#D9DEE8",
+  red:     "#E25C5C",
+  orange:  "#E8973D",
+  border:  "#1D2738",
 }
 
 const css = {
-  page:  { minHeight:"100vh", background:C.dark, color:C.text,
+  page:  { minHeight:"100vh", color:C.text,
+           background: `radial-gradient(1100px 520px at 82% -8%, rgba(212,175,90,0.10), transparent 62%),
+                        radial-gradient(950px 540px at 8% 108%, rgba(65,185,121,0.09), transparent 62%),
+                        linear-gradient(180deg, #070B14 0%, #05070D 100%)`,
+           backgroundAttachment:"fixed",
            fontFamily:"'Georgia', 'Palatino Linotype', serif" },
-  card:  { background:C.card, borderRadius:4, padding:24,
-           border:`1px solid ${C.border}` },
+  card:  { background:"linear-gradient(165deg, rgba(20,27,43,0.92), rgba(10,14,24,0.94))",
+           borderRadius:14, padding:24,
+           border:"1px solid rgba(120,140,175,0.16)",
+           boxShadow:"0 10px 36px rgba(0,0,0,0.4)",
+           backdropFilter:"blur(10px)" },
   input: { width:"100%", background:C.field, border:`1px solid ${C.border}`,
-           borderRadius:8, padding:"10px 14px", color:C.text, fontSize:14,
+           borderRadius:10, padding:"11px 14px", color:C.text, fontSize:14,
            outline:"none", boxSizing:"border-box" },
   btn:   (bg=C.emerald, fg=C.dark) => ({
-           background:bg, color:fg, border:"none", borderRadius:2,
+           background:bg, color:fg, border:"none", borderRadius:9,
            padding:"10px 20px", fontWeight:600, fontSize:13, cursor:"pointer",
            letterSpacing:1, textTransform:"uppercase",
            fontFamily:"'Segoe UI', Arial, sans-serif" }),
@@ -232,7 +239,31 @@ export default function App() {
 
   return (
     <div style={css.page}>
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        button { transition: transform .18s ease, box-shadow .18s ease, filter .18s ease; }
+        button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.12);
+          box-shadow: 0 6px 22px rgba(65,185,121,0.22), 0 2px 10px rgba(212,175,90,0.12); }
+        button:active:not(:disabled) { transform: translateY(0); }
+        input, select, textarea { transition: border-color .18s ease, box-shadow .18s ease; }
+        input:focus, select:focus, textarea:focus { border-color: #41B979 !important;
+          box-shadow: 0 0 0 3px rgba(65,185,121,0.15); }
+        ::selection { background: rgba(212,175,90,0.35); }
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #05070D; }
+        ::-webkit-scrollbar-thumb { background: #1D2738; border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2A3850; }
+      `}</style>
+      <div style={{ textAlign:"center", padding:"7px 16px", fontSize:12.5,
+                    fontFamily:"'Segoe UI', Arial, sans-serif", color:C.text,
+                    background:"linear-gradient(90deg, rgba(212,175,90,0.14), rgba(65,185,121,0.14))",
+                    borderBottom:"1px solid rgba(212,175,90,0.25)", lineHeight:1.6 }}>
+        <b style={{ color:C.gold, letterSpacing:2 }}>BETA</b>
+        {" "}— you're using an early version. Found an issue? Email{" "}
+        <a href="mailto:squeekydoorphotos@gmail.com"
+           style={{ color:C.emerald }}>squeekydoorphotos@gmail.com</a>
+        {" "}and we'll handle it fast.
+      </div>
       <Header user={user} onLogout={logout} onNav={setPage} />
       {page==="landing"   && <Landing   onNav={setPage} />}
       {page==="pricing"   && <Pricing   token={token} onNav={setPage} />}
@@ -257,7 +288,10 @@ export default function App() {
 
 function Header({ user, onLogout, onNav }) {
   return (
-    <header style={{ background:C.card, borderBottom:`1px solid ${C.border}`,
+    <header style={{ background:"rgba(8,12,20,0.72)", backdropFilter:"blur(14px)",
+                     WebkitBackdropFilter:"blur(14px)",
+                     borderBottom:"1px solid rgba(120,140,175,0.14)",
+                     position:"sticky", top:0, zIndex:50,
                      padding:"0 24px", display:"flex", alignItems:"center",
                      height:64, gap:16 }}>
       <span style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}
@@ -280,7 +314,7 @@ function Header({ user, onLogout, onNav }) {
             </div>
           )}
           <div style={{ background:C.field, borderRadius:20, padding:"4px 14px",
-                        fontSize:13, color:C.gold, fontWeight:700, displsplay:"flex",
+                        fontSize:13, color:C.gold, fontWeight:700, display:"flex",
                         alignItems:"center", gap:6 }}>
             â¡ {user.is_admin ? "â" : user.tokens} tokens
           </div>
@@ -336,6 +370,8 @@ function Landing({ onNav }) {
           </button>
         </div>
         <p style={{ color:C.dim, fontSize:12, marginTop:12 }}>No credit card Â· 0.5 tokens per clip</p>
+        <p style={{ color:C.dim, fontSize:12.5, marginTop:8 }}>
+          Post straight to YouTube today — <b style={{color:C.gold}}>Instagram, TikTok & Facebook coming soon</b> (waiting on platform approval)</p>
       </div>
 
       {/* Virality demo */}
@@ -914,7 +950,8 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {["YouTube","TikTok","Instagram","Facebook"].map(p => (
-            <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13 }}
+            <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13,
+                                     ...(p!=="YouTube" ? { opacity:0.5, cursor:"default" } : {}) }}
                     onClick={() => {
                       if (p === "YouTube") {
                         fetch(`https://backend-production-33b3.up.railway.app/social/youtube/auth`, {headers:{Authorization:`Bearer ${token}`}})
@@ -934,10 +971,10 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                           })
                           .catch(() => alert('YouTube connection failed â try again'));
                       } else {
-                        alert(`Connect ${p} â coming soon!`)
+                        alert(p + " posting is coming soon! We're waiting on " + p + "'s approval - it will light up here the moment it's ready.")
                       }
                     }}>
-              ð Connect {p}
+              {p==="YouTube" ? "Connect YouTube" : p + " · Coming Soon"}
             </button>
           ))}
         </div>
