@@ -384,7 +384,7 @@ function Landing({ onNav }) {
         </div>
         <p style={{ color:C.dim, fontSize:12, marginTop:12 }}>No credit card · 0.5 tokens per clip</p>
         <p style={{ color:C.dim, fontSize:12.5, marginTop:8 }}>
-          Post straight to YouTube today — <b style={{color:C.gold}}>Instagram, TikTok & Facebook coming soon</b> (waiting on platform approval)</p>
+          Post straight to YouTube & TikTok today — <b style={{color:C.gold}}>Instagram & Facebook coming soon</b></p>
       </div>
 
       {/* Virality demo */}
@@ -838,6 +838,8 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   const [selJob,  setSelJob]  = useState(null)
   const [loading, setLoading] = useState(true)
   const [preview, setPreview] = useState(null)
+  const [ytConn,  setYtConn]  = useState(false)
+  const [ttConn,  setTtConn]  = useState(false)
 
   const fetchJobs = useCallback(() => {
     apiFetch("/jobs",{},token).then(setJobs).catch(console.error)
@@ -856,6 +858,13 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
     const id = setInterval(fetchJobs, 5000)
     return () => clearInterval(id)
   },[fetchJobs])
+
+  useEffect(() => {
+    apiFetch("/social/youtube/status", {}, token)
+      .then(r => setYtConn(r.connected)).catch(() => {})
+    apiFetch("/social/tiktok/status", {}, token)
+      .then(r => setTtConn(r.connected)).catch(() => {})
+  }, [token])
 
   const buyTopup = async (pack, provider="stripe") => {
     try {
@@ -962,11 +971,17 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
           Connect your own social accounts to schedule and track posts.
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {["YouTube","TikTok","Instagram","Facebook"].map(p => (
-            <button key={p} style={{ ...css.btn(C.field, C.text), fontSize:13,
-                                     ...(p!=="YouTube" ? { opacity:0.5, cursor:"default" } : {}) }}
+          {[
+            { name:"YouTube",   active:true,  label:ytConn?"✓ YouTube Connected":"Connect YouTube" },
+            { name:"TikTok",    active:true,  label:ttConn?"✓ TikTok Connected":"Connect TikTok" },
+            { name:"Instagram", active:false, label:"Instagram · Coming Soon" },
+            { name:"Facebook",  active:false, label:"Facebook · Coming Soon" },
+          ].map(({ name, active, label }) => (
+            <button key={name} style={{ ...css.btn(C.field, C.text), fontSize:13,
+                                        ...(!active ? { opacity:0.5, cursor:"default" } : {}) }}
                     onClick={() => {
-                      if (p === "YouTube") {
+                      if (!active) { alert(name + " posting is coming soon!"); return }
+                      if (name === "YouTube") {
                         fetch(`https://backend-production-33b3.up.railway.app/social/youtube/auth`, {headers:{Authorization:`Bearer ${token}`}})
                           .then(r => r.json())
                           .then(d => {
@@ -983,11 +998,27 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                             }
                           })
                           .catch(() => alert('YouTube connection failed — try again'));
-                      } else {
-                        alert(p + " posting is coming soon! We're waiting on " + p + "'s approval - it will light up here the moment it's ready.")
+                      }
+                      if (name === "TikTok") {
+                        fetch(`https://backend-production-33b3.up.railway.app/social/tiktok/auth`, {headers:{Authorization:`Bearer ${token}`}})
+                          .then(r => r.json())
+                          .then(d => {
+                            if (d.auth_url) {
+                              const popup = window.open(d.auth_url, 'tt_auth', 'width=600,height=700');
+                              const timer = setInterval(() => {
+                                if (popup && popup.closed) {
+                                  clearInterval(timer);
+                                  apiFetch('/social/tiktok/status', {}, token)
+                                    .then(r => setTtConn(r.connected))
+                                    .catch(() => {});
+                                }
+                              }, 1000);
+                            }
+                          })
+                          .catch(() => alert('TikTok connection failed — try again'));
                       }
                     }}>
-              {p==="YouTube" ? "Connect YouTube" : p + " · Coming Soon"}
+              {label}
             </button>
           ))}
         </div>
@@ -1127,6 +1158,12 @@ function ClipPicker({ jobId, token, onNav }) {
   const [ytAt,    setYtAt]    = useState("")
   const [ytBusy,  setYtBusy]  = useState(false)
   const [ytMsg,   setYtMsg]   = useState("")
+  const [ttConn,  setTtConn]  = useState(false)
+  const [ttModal, setTtModal] = useState(null)
+  const [ttTitle, setTtTitle] = useState("")
+  const [ttPrivacy, setTtPrivacy] = useState("PUBLIC_TO_EVERYONE")
+  const [ttBusy,  setTtBusy]  = useState(false)
+  const [ttMsg,   setTtMsg]   = useState("")
 
   useEffect(() => {
     if (!jobId) { onNav("dashboard"); return }
@@ -1153,6 +1190,9 @@ function ClipPicker({ jobId, token, onNav }) {
   useEffect(() => {
     apiFetch("/social/youtube/status", {}, token)
       .then(r => setYtConn(r.connected))
+      .catch(() => {})
+    apiFetch("/social/tiktok/status", {}, token)
+      .then(r => setTtConn(r.connected))
       .catch(() => {})
   }, [token])
 
@@ -1340,6 +1380,12 @@ function ClipPicker({ jobId, token, onNav }) {
                     ▶️ YouTube
                   </button>
                 )}
+                {ttConn && (
+                  <button style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6, border:"1px solid #333" }}
+                          onClick={e => { e.stopPropagation(); setTtModal(clip); setTtTitle(clip.hook||""); setTtMsg("") }}>
+                    🎵 TikTok
+                  </button>
+                )}
                 </div>
               </div>
             )
@@ -1377,6 +1423,46 @@ function ClipPicker({ jobId, token, onNav }) {
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <button style={css.btn(C.muted,C.dark)} onClick={()=>{setYtModal(null);setYtMsg("")}}>Cancel</button>
               <button style={{...css.btn(C.red,C.dark),opacity:ytBusy||!ytTitle?0.5:1}} disabled={ytBusy||!ytTitle} onClick={uploadToYt}>{ytBusy?"Uploading…":"Upload"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ttModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setTtModal(null);setTtMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>🎵 Post to TikTok</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {ttModal.filename}</div>
+            <input placeholder="Caption / Title *" value={ttTitle} onChange={e=>setTtTitle(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:C.dim,letterSpacing:1,textTransform:"uppercase"}}>Privacy</label>
+              <select value={ttPrivacy} onChange={e=>setTtPrivacy(e.target.value)}
+                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}}>
+                <option value="PUBLIC_TO_EVERYONE">Public</option>
+                <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                <option value="SELF_ONLY">Private (Only me)</option>
+              </select>
+            </div>
+            {ttMsg && <div style={{fontSize:13,color:ttMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{ttMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setTtModal(null);setTtMsg("")}}>Cancel</button>
+              <button style={{...css.btn("#010101",C.text),border:"1px solid #333",opacity:ttBusy||!ttTitle?0.5:1}} disabled={ttBusy||!ttTitle}
+                      onClick={async()=>{
+                        setTtBusy(true); setTtMsg("")
+                        try {
+                          const ps = new URLSearchParams({
+                            clip_job_id: job.id,
+                            clip_filename: ttModal.filename,
+                            title: ttTitle,
+                            privacy_level: ttPrivacy,
+                          })
+                          await apiFetch("/social/tiktok/upload?"+ps, {method:"POST"}, token)
+                          setTtMsg("✅ Posted to TikTok! It will appear on your profile shortly.")
+                        } catch(e) { setTtMsg("❌ "+e.message) }
+                        setTtBusy(false)
+                      }}>{ttBusy?"Posting…":"Post to TikTok"}</button>
             </div>
           </div>
         </div>
