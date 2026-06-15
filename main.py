@@ -1661,6 +1661,7 @@ def tiktok_callback(code: str = None, state: str = None,
     try:
         import requests as _req
         # Exchange code for access + refresh tokens
+                print(f"[TikTok DEBUG] key={TIKTOK_CLIENT_KEY!r} secret[:6]={TIKTOK_CLIENT_SECRET[:6]!r} code[:20]={code[:20]!r}")
         token_resp = _req.post(
             "https://open.tiktokapis.com/v2/oauth/token/",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
