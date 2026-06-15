@@ -19,7 +19,6 @@ const css = {
            background: `radial-gradient(1100px 520px at 82% -8%, rgba(212,175,90,0.10), transparent 62%),
                         radial-gradient(950px 540px at 8% 108%, rgba(65,185,121,0.09), transparent 62%),
                         linear-gradient(180deg, #070B14 0%, #05070D 100%)`,
-           backgroundAttachment:"fixed",
            fontFamily:"'Georgia', 'Palatino Linotype', serif" },
   card:  { background:"linear-gradient(165deg, rgba(20,27,43,0.92), rgba(10,14,24,0.94))",
            borderRadius:14, padding:24,
@@ -1392,8 +1391,6 @@ function ClipPicker({ jobId, token, onNav }) {
           })}
         </div>
       )}
-
-      {pickerPreview && <VideoPreview url={pickerPreview.url} token={token} filename={pickerPreview.filename} onClose={() => setPickerPreview(null)} />}
 
       {pickerPreview && <VideoPreview url={pickerPreview.url} token={token} filename={pickerPreview.filename} onClose={() => setPickerPreview(null)} />}
 
