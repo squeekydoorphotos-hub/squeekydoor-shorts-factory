@@ -46,7 +46,7 @@ function apiFetch(path, opts={}, token=null) {
   const headers = { "Content-Type":"application/json", ...(opts.headers||{}) }
   if (token) headers["Authorization"] = `Bearer ${token}`
   return fetch(API + path, { ...opts, headers, credentials: 'include' })
-    .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || "Error") }))
+    .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(Array.isArray(e.detail)?e.detail.map(d=>d.msg||JSON.stringify(d)).join(', '):e.detail?String(e.detail):(e.message||"Error")) }))
 }
 
 async function downloadWithAuth(url, filename, token) {
