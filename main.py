@@ -1576,7 +1576,7 @@ def youtube_upload(
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         clip_path = JOBS_DIR / clip_job_id / clip_filename
-    if not clip_path.exists():
+                if not clip_path.exists():
             raise HTTPException(status_code=404, detail="Clip file not found")
         # Build metadata
         status_body: dict = {"privacyStatus": "public"}
@@ -1778,8 +1778,9 @@ def tiktok_disconnect(current_user=Depends(get_current_user), db: Session = Depe
 
 @app.post("/social/tiktok/upload")
 async def tiktok_upload(
-    clip_job_id: str,    clip_filename: str,
-    title: str =h"",
+    clip_job_id: str,
+    clip_filename: str,
+    title: str = "",
     privacy_level: str = "PUBLIC_TO_EVERYONE",
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
