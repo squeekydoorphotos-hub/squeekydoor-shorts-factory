@@ -1805,6 +1805,8 @@ async def tiktok_upload(
     file_size  = os.path.getsize(clip_path)
     chunk_size = 10 * 1024 * 1024
     total_chunks = (file_size + chunk_size - 1) // chunk_size
+    if total_chunks == 1:
+        chunk_size = file_size
     import requests as _req
 
     # Step 1: Initialize upload
