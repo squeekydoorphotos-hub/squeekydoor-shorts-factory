@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from fastapi import (FastAPI, Depends, HTTPException, BackgroundTasks,
-                     Request, Header, Response, status)
+                     Request, Header, Response, status, Form, UploadFile, File)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
