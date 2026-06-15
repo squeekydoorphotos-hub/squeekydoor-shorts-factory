@@ -1807,6 +1807,10 @@ async def tiktok_upload(
     total_chunks = (file_size + chunk_size - 1) // chunk_size
     if total_chunks == 1:
         chunk_size = file_size
+    # Normalize UI label to TikTok API privacy enum; sandbox requires SELF_ONLY
+    _PMAP = {"Public": "PUBLIC_TO_EVERYONE", "Friends": "MUTUAL_FOLLOW_FRIENDS", "Followers": "FOLLOWER_OF_CREATOR", "Private (Only me)": "SELF_ONLY"}
+    privacy_level = _PMAP.get(privacy_level, privacy_level)
+    privacy_level = "SELF_ONLY"  # TODO: remove after TikTok App Review
     import requests as _req
 
     # Step 1: Initialize upload
