@@ -1576,7 +1576,7 @@ def youtube_upload(
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         clip_path = JOBS_DIR / clip_job_id / clip_filename
-                if not clip_path.exists():
+        if not clip_path.exists():
             raise HTTPException(status_code=404, detail="Clip file not found")
         # Build metadata
         status_body: dict = {"privacyStatus": "public"}
@@ -1751,7 +1751,6 @@ def _tiktok_refresh(sa, db):
         sa.refresh_token = enc_token(new_refresh)
     sa.token_expires_at = datetime.utcnow() + timedelta(seconds=new_expires)
     db.commit()
-title: str = "",
 
 @app.get("/social/tiktok/status")
 def tiktok_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
