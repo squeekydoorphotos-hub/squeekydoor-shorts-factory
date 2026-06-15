@@ -126,6 +126,11 @@ YOUTUBE_REDIRECT_URI  = "https://backend-production-33b3.up.railway.app/social/y
 YOUTUBE_SCOPES        = ["https://www.googleapis.com/auth/youtube.upload",
                           "https://www.googleapis.com/auth/youtube.readonly"]
 
+TIKTOK_CLIENT_KEY     = os.getenv("TIKTOK_CLIENT_KEY", "")
+TIKTOK_CLIENT_SECRET  = os.getenv("TIKTOK_CLIENT_SECRET", "")
+TIKTOK_REDIRECT_URI   = "https://backend-production-33b3.up.railway.app/auth/tiktok/callback"
+TIKTOK_SCOPES         = "user.info.basic,video.upload,video.publish"
+
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
 # ── Admin / owner accounts — bypass all token checks ──────────────
@@ -1623,86 +1628,78 @@ def youtube_upload(
 
 
 # ══════════════════════════════════════════════════════════════════
-#  ADMIN — YOUTUBE COOKIES UPLOAD
+#  TIKTOK OAUTH + UPLOAD ROUTES
 # ══════════════════════════════════════════════════════════════════
 
-class CookiesIn(BaseModel):
-    content: str  # Full Netscape cookie file text
+@app.get("/social/tiktok/auth")
+def tiktok_auth(current_user: User = Depends(get_current_user)):
+    """Step 1 — return the TikTok OAuth URL for the frontend to open."""
+    import urllib.parse
+    if not TIKTOK_CLIENT_KEY:
+        raise HTTPException(500, "TikTok not configured — add TIKTOK_CLIENT_KEY to Railway vars")
+    params = {
+        "client_key":     TIKTOK_CLIENT_KEY,
+        "response_type":  "code",
+        "scope":          TIKTOK_SCOPES,
+        "redirect_uri":   TIKTOK_REDIRECT_URI,
+        "state":          str(current_user.id),
+    }
+    url = "https://www.tiktok.com/v2/auth/authorize/?" + urllib.parse.urlencode(params)
+    return {"auth_url": url}
 
-def _cookies_path() -> Path:
-    """Path to cookies file on the persistent volume."""
-    db_path = Path(os.getenv("DB_PATH", "/tmp/sdp_shorts.db"))
-    return db_path.parent / "yt_cookies.txt"
 
-@app.post("/admin/cookies")
-def upload_cookies(data: CookiesIn, user: User = Depends(get_current_user)):
-    """Upload YouTube cookies to the persistent volume. Admin only."""
-    if user.email not in ADMIN_EMAILS:
-        raise HTTPException(403, "Admin only")
-    path = _cookies_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(data.content)
-    lines = len(data.content.splitlines())
-    size_kb = round(len(data.content) / 1024, 1)
-    return {"ok": True, "path": str(path), "lines": lines, "size_kb": size_kb}
-
-@app.get("/admin/cookies/status")
-def cookies_status(user: User = Depends(get_current_user)):
-    """Check if YouTube cookies are loaded on the volume. Admin only."""
-    if user.email not in ADMIN_EMAILS:
-        raise HTTPException(403, "Admin only")
-    path = _cookies_path()
-    if path.exists():
-        content = path.read_text()
-        return {"exists": True, "path": str(path),
-                "lines": len(content.splitlines()),
-                "size_kb": round(len(content) / 1024, 1)}
-    return {"exists": False, "path": str(path)}
-
-@app.delete("/admin/cookies")
-def delete_cookies(user: User = Depends(get_current_user)):
-    """Delete the YouTube cookies file. Admin only."""
-    if user.email not in ADMIN_EMAILS:
-        raise HTTPException(403, "Admin only")
-    path = _cookies_path()
-    if path.exists():
-        path.unlink()
-        return {"ok": True, "deleted": str(path)}
-    return {"ok": True, "deleted": None}
-
-# ══════════════════════════════════════════════════════════════════
-#  CLEANUP  (delete job files > 24 hours)
-# ══════════════════════════════════════════════════════════════════
-
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(_cleanup_loop())
-    # Mark any stuck "processing" jobs as failed on restart
-    db = _db_session()
+@app.get("/auth/tiktok/callback")
+def tiktok_callback(code: str = None, state: str = None,
+                    error: str = None, db: Session = Depends(get_db)):
+    """Step 2 — TikTok redirects here with ?code=... Exchange it for tokens."""
+    from fastapi.responses import HTMLResponse
+    if error or not code:
+        return HTMLResponse(
+            f"<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+            f"TikTok auth failed: {error or 'no code returned'}</p>"
+        )
     try:
-        stuck = db.query(Job).filter(Job.status == "processing").all()
-        for j in stuck:
-            j.status = "failed"
-            j.log = (j.log or "") + "\n⚠️ Marked failed on restart\n"
-        if stuck:
-            db.commit()
-            print(f"[Startup] Marked {len(stuck)} stuck jobs as failed")
-    finally:
-        db.close()
-    print(f"[Startup] ffmpeg: {FFMPEG_BIN}")
-    print(f"[Startup] ffprobe: {FFPROBE_BIN}")
+        import requests as _req
+        # Exchange code for access + refresh tokens
+        token_resp = _req.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "client_key":     TIKTOK_CLIENT_KEY,
+                "client_secret":  TIKTOK_CLIENT_SECRET,
+                "code":           code,
+                "grant_type":     "authorization_code",
+                "redirect_uri":   TIKTOK_REDIRECT_URI,
+            },
+            timeout=20,
+        )
+        td = token_resp.json()
+        access_token  = td.get("access_token", "")
+        refresh_token = td.get("refresh_token", "")
+        expires_in    = td.get("expires_in", 86400)
+        if not access_token:
+            return HTMLResponse(
+                f"<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+                f"Token exchange failed: {td}</p>"
+            )
 
+        # Fetch TikTok display name
+        user_resp = _req.get(
+            "https://open.tiktokapis.com/v2/user/info/",
+            params={"fields": "display_name,username"},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+        udata = user_resp.json().get("data", {}).get("user", {})
+        display_name = udata.get("display_name") or udata.get("username") or "TikTok User"
 
-async def _cleanup_loop():
-    import asyncio
-    while True:
-        await asyncio.sleep(3600)   # run hourly
-        cutoff = datetime.utcnow() - timedelta(hours=48)
-        db = _db_session()
-        try:
-            old_jobs = db.query(Job).filter(Job.updated_at < cutoff,
-                                             Job.status == "done").all()
-            for job in old_jobs:
-                shutil.rmtree(str(JOBS_DIR / job.id), ignore_errors=True)
-        finally:
-            db.close()
+        # Upsert SocialAccount row
+        user_id = state  # UUID passed through state param
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == user_id,
+            SocialAccount.platform == "tiktok"
+        ).first()
+        if not sa:
+            sa = SocialAccount(user_id=user_id, platform="tiktok")
+            db.add(sa)
+        sa.access_token     = enc_token(access_toke
