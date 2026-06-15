@@ -11,7 +11,7 @@ ENV VARS needed (.env):
     CLAUDE_API_KEY      = sk-ant-...
     STRIPE_SECRET_KEY   = sk_live_...  (or sk_test_...)
     STRIPE_WEBHOOK_SECRET = whsec_...
-    STRIPE_PRICE_STARTER  = price_...h
+    STRIPE_PRICE_STARTER  = price_...hh
     STRIPE_PRICE_PRO      = price_...
     STRIPE_PRICE_STUDIO   = price_...
     PAYPAL_CLIENT_ID    = ...
@@ -1576,7 +1576,7 @@ def youtube_upload(
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         clip_path = JOBS_DIR / clip_job_id / clip_filename
-        if not clip_path.exists():
+    if not clip_path.exists():
             raise HTTPException(status_code=404, detail="Clip file not found")
         # Build metadata
         status_body: dict = {"privacyStatus": "public"}
@@ -1751,8 +1751,7 @@ def _tiktok_refresh(sa, db):
         sa.refresh_token = enc_token(new_refresh)
     sa.token_expires_at = datetime.utcnow() + timedelta(seconds=new_expires)
     db.commit()
-    return new_access
-
+title: str = "",
 
 @app.get("/social/tiktok/status")
 def tiktok_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1779,9 +1778,9 @@ def tiktok_disconnect(current_user=Depends(get_current_user), db: Session = Depe
 
 @app.post("/social/tiktok/upload")
 async def tiktok_upload(
-    clip_id: str = Form(...),
-    title: str = Form(""),
-    privacy_level: str = Form("PUBLIC_TO_EVERYONE"),
+    clip_job_id: str,    clip_filename: str,
+    title: str =h"",
+    privacy_level: str = "PUBLIC_TO_EVERYONE",
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1799,16 +1798,9 @@ async def tiktok_upload(
         access_token = dec_token(sa.access_token)
 
     # Find clip file
-    clip = db.query(Clip).filter(
-        Clip.id == clip_id,
-        Clip.user_id == str(current_user.id)
-    ).first()
-    if not clip:
-        raise HTTPException(404, "Clip not found")
-
-    clip_path = clip.file_path
-    if not os.path.exists(clip_path):
-        raise HTTPException(404, "Clip file not found on disk")
+    clip_path = JOBS_DIR / clip_job_id / clip_filename
+    if not clip_path.exists():
+        raise HTTPException(404, "Clip file not found")
 
     file_size  = os.path.getsize(clip_path)
     chunk_size = 10 * 1024 * 1024
