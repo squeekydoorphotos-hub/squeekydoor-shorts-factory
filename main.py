@@ -11,7 +11,7 @@ ENV VARS needed (.env):
     CLAUDE_API_KEY      = sk-ant-...
     STRIPE_SECRET_KEY   = sk_live_...  (or sk_test_...)
     STRIPE_WEBHOOK_SECRET = whsec_...
-    STRIPE_PRICE_STARTER  = price_...
+    STRIPE_PRICE_STARTER  = price_...h
     STRIPE_PRICE_PRO      = price_...
     STRIPE_PRICE_STUDIO   = price_...
     PAYPAL_CLIENT_ID    = ...
@@ -126,8 +126,8 @@ YOUTUBE_REDIRECT_URI  = "https://backend-production-33b3.up.railway.app/social/y
 YOUTUBE_SCOPES        = ["https://www.googleapis.com/auth/youtube.upload",
                           "https://www.googleapis.com/auth/youtube.readonly"]
 
-TIKTOK_CLIENT_KEY     = os.getenv("TIKTOK_CLIENT_KEY", "")
-TIKTOK_CLIENT_SECRET  = os.getenv("TIKTOK_CLIENT_SECRET", "")
+TIKTOK_CLIENT_KEY     = os.getenv("TIKTOK_CLIENT_KEY", "").strip()
+TIKTOK_CLIENT_SECRET  = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
 TIKTOK_REDIRECT_URI   = "https://backend-production-33b3.up.railway.app/auth/tiktok/callback"
 TIKTOK_SCOPES         = "user.info.basic,video.upload,video.publish"
 
