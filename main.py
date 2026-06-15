@@ -1702,4 +1702,254 @@ def tiktok_callback(code: str = None, state: str = None,
         if not sa:
             sa = SocialAccount(user_id=user_id, platform="tiktok")
             db.add(sa)
-        sa.access_token     = enc_token(access_toke
+        sa.access_token     = enc_token(access_token)
+        sa.refresh_token    = enc_token(refresh_token)
+        sa.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        sa.account_name     = display_name
+        db.commit()
+
+        return HTMLResponse("""
+<html>
+<body style="background:#000;font-family:sans-serif;text-align:center;padding-top:80px">
+  <p style="color:#fff;font-size:18px">&#x2705; TikTok connected!</p>
+  <p style="color:#888;font-size:14px">You can close this window.</p>
+  <script>
+    if (window.opener) { window.opener.postMessage('tiktok_connected', '*'); window.close(); }
+  </script>
+</body>
+</html>""")
+    except Exception as e:
+        return HTMLResponse(
+            f"<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+            f"Internal error: {e}</p>"
+        )
+
+
+# ── TikTok token refresh helper ───────────────────────────────────────────────────────────────────────────
+def _tiktok_refresh(sa, db):
+    """Refresh an expired TikTok access_token using refresh_token."""
+    import requests as _req
+    resp = _req.post(
+        "https://open.tiktokapis.com/v2/oauth/token/",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data={
+            "client_key":    TIKTOK_CLIENT_KEY,
+            "client_secret": TIKTOK_CLIENT_SECRET,
+            "grant_type":    "refresh_token",
+            "refresh_token": dec_token(sa.refresh_token),
+        },
+        timeout=20,
+    )
+    td = resp.json()
+    new_access  = td.get("access_token")
+    new_refresh = td.get("refresh_token")
+    new_expires = td.get("expires_in", 86400)
+    if not new_access:
+        raise HTTPException(502, f"TikTok refresh failed: {td}")
+    sa.access_token     = enc_token(new_access)
+    if new_refresh:
+        sa.refresh_token = enc_token(new_refresh)
+    sa.token_expires_at = datetime.utcnow() + timedelta(seconds=new_expires)
+    db.commit()
+    return new_access
+
+
+@app.get("/social/tiktok/status")
+def tiktok_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    sa = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "tiktok"
+    ).first()
+    if sa:
+        return {"connected": True, "account_name": sa.account_name or "TikTok"}
+    return {"connected": False, "account_name": ""}
+
+
+@app.delete("/social/tiktok/disconnect")
+def tiktok_disconnect(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    sa = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "tiktok"
+    ).first()
+    if sa:
+        db.delete(sa)
+        db.commit()
+    return {"disconnected": True}
+
+
+@app.post("/social/tiktok/upload")
+async def tiktok_upload(
+    clip_id: str = Form(...),
+    title: str = Form(""),
+    privacy_level: str = Form("PUBLIC_TO_EVERYONE"),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sa = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "tiktok"
+    ).first()
+    if not sa:
+        raise HTTPException(400, "TikTok account not connected")
+
+    # Refresh token if expired
+    if sa.token_expires_at and datetime.utcnow() >= sa.token_expires_at:
+        access_token = _tiktok_refresh(sa, db)
+    else:
+        access_token = dec_token(sa.access_token)
+
+    # Find clip file
+    clip = db.query(Clip).filter(
+        Clip.id == clip_id,
+        Clip.user_id == str(current_user.id)
+    ).first()
+    if not clip:
+        raise HTTPException(404, "Clip not found")
+
+    clip_path = clip.file_path
+    if not os.path.exists(clip_path):
+        raise HTTPException(404, "Clip file not found on disk")
+
+    file_size  = os.path.getsize(clip_path)
+    chunk_size = 10 * 1024 * 1024
+    total_chunks = (file_size + chunk_size - 1) // chunk_size
+    import requests as _req
+
+    # Step 1: Initialize upload
+    init_resp = _req.post(
+        "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        },
+        json={
+            "post_info": {
+                "title": title[:150] or "SDP Short",
+                "privacy_level": privacy_level,
+                "disable_duet": False,
+                "disable_comment": False,
+                "disable_stitch": False,
+            },
+            "source_info": {
+                "source": "FILE_UPLOAD",
+                "video_size": file_size,
+                "chunk_size": chunk_size,
+                "total_chunk_count": total_chunks,
+            },
+        },
+        timeout=30,
+    )
+    init_data = init_resp.json()
+    if init_data.get("error", {}).get("code", "ok") != "ok":
+        raise HTTPException(502, f"TikTok init failed: {init_data}")
+
+    publish_id = init_data["data"]["publish_id"]
+    upload_url = init_data["data"]["upload_url"]
+
+    # Step 2: Upload chunks
+    chunk_num = 0
+    with open(clip_path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            start = chunk_num * chunk_size
+            end   = start + len(chunk) - 1
+            _req.put(
+                upload_url,
+                headers={
+                    "Content-Type":   "video/mp4",
+                    "Content-Range":  f"bytes {start}-{end}/{file_size}",
+                    "Content-Length": str(len(chunk)),
+                },
+                data=chunk,
+                timeout=120,
+            )
+            chunk_num += 1
+
+    return {"publish_id": publish_id, "status": "processing"}
+
+
+#  ADMIN — YOUTUBE COOKIES UPLOAD
+# ══════════════════════════════════════════════════════════════════
+
+class CookiesIn(BaseModel):
+    content: str  # Full Netscape cookie file text
+
+def _cookies_path() -> Path:
+    """Path to cookies file on the persistent volume."""
+    db_path = Path(os.getenv("DB_PATH", "/tmp/sdp_shorts.db"))
+    return db_path.parent / "yt_cookies.txt"
+
+@app.post("/admin/cookies")
+def upload_cookies(data: CookiesIn, user: User = Depends(get_current_user)):
+    """Upload YouTube cookies to the persistent volume. Admin only."""
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(403, "Admin only")
+    path = _cookies_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(data.content)
+    lines = len(data.content.splitlines())
+    size_kb = round(len(data.content) / 1024, 1)
+    return {"ok": True, "path": str(path), "lines": lines, "size_kb": size_kb}
+
+@app.get("/admin/cookies/status")
+def cookies_status(user: User = Depends(get_current_user)):
+    """Check if YouTube cookies are loaded on the volume. Admin only."""
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(403, "Admin only")
+    path = _cookies_path()
+    if path.exists():
+        content = path.read_text()
+        return {"exists": True, "path": str(path),
+                "lines": len(content.splitlines()),
+                "size_kb": round(len(content) / 1024, 1)}
+    return {"exists": False, "path": str(path)}
+
+@app.delete("/admin/cookies")
+def delete_cookies(user: User = Depends(get_current_user)):
+    """Delete the YouTube cookies file. Admin only."""
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(403, "Admin only")
+    path = _cookies_path()
+    if path.exists():
+        path.unlink()
+        return {"ok": True, "deleted": str(path)}
+    return {"ok": True, "deleted": None}
+
+# ══════════════════════════════════════════════════════════════════
+#  CLEANUP  (delete job files > 24 hours)
+# ══════════════════════════════════════════════════════════════════
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(_cleanup_loop())
+    # Mark any stuck "processing" jobs as failed on restart
+    db = _db_session()
+    try:
+        stuck = db.query(Job).filter(Job.status == "processing").all()
+        for j in stuck:
+            j.status = "failed"
+            j.log = (j.log or "") + "\n⚠️ Marked failed on restart\n"
+        if stuck:
+            db.commit()
+            print(f"[Startup] Marked {len(stuck)} stuck jobs as failed")
+    finally:
+        db.close()
+    print(f"[Startup] ffmpeg: {FFMPEG_BIN}")
+    print(f"[Startup] ffprobe: {FFPROBE_BIN}")
+
+
+async def _cleanup_loop():
+    import asyncio
+    while True:
+        await asyncio.sleep(3600)   # run hourly
+        cutoff = datetime.utcnow() - timedelta(hours=48)
+        db = _db_session()
+        try:
+            old_jobs = db.query(Job).filter(Job.updated_at < cutoff,
+                                             Job.status == "done").all()
+            for job in old_jobs:
+                shutil.rmtree(str(JOBS_DIR / job.id), ignore_errors=True)
+        finally:
+            db.close()
