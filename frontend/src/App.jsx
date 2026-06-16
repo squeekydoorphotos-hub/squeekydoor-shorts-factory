@@ -839,6 +839,8 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   const [preview, setPreview] = useState(null)
   const [ytConn,  setYtConn]  = useState(false)
   const [ttConn,  setTtConn]  = useState(false)
+  const [igConn,  setIgConn]  = useState(false)
+  const [fbConn,  setFbConn]  = useState(false)
 
   const fetchJobs = useCallback(() => {
     apiFetch("/jobs",{},token).then(setJobs).catch(console.error)
@@ -863,6 +865,8 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
       .then(r => setYtConn(r.connected)).catch(() => {})
     apiFetch("/social/tiktok/status", {}, token)
       .then(r => setTtConn(r.connected)).catch(() => {})
+    apiFetch("/social/meta/status", {}, token)
+      .then(r => { setIgConn(r.instagram?.connected); setFbConn(r.facebook?.connected) }).catch(() => {})
   }, [token])
 
   const buyTopup = async (pack, provider="stripe") => {
@@ -973,8 +977,8 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
           {[
             { name:"YouTube",   active:true,  label:ytConn?"✓ YouTube Connected":"Connect YouTube" },
             { name:"TikTok",    active:true,  label:ttConn?"✓ TikTok Connected":"Connect TikTok" },
-            { name:"Instagram", active:false, label:"Instagram · Coming Soon" },
-            { name:"Facebook",  active:false, label:"Facebook · Coming Soon" },
+            { name:"Instagram", active:true,  label:igConn?"✓ Instagram Connected":"Connect Instagram" },
+            { name:"Facebook",  active:true,  label:fbConn?"✓ Facebook Connected":"Connect Facebook" },
           ].map(({ name, active, label }) => (
             <button key={name} style={{ ...css.btn(C.field, C.text), fontSize:13,
                                         ...(!active ? { opacity:0.5, cursor:"default" } : {}) }}
@@ -1015,6 +1019,24 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                             }
                           })
                           .catch(() => alert('TikTok connection failed — try again'));
+                      }
+                      if (name === "Instagram" || name === "Facebook") {
+                        fetch(`https://backend-production-33b3.up.railway.app/social/meta/auth`, {headers:{Authorization:`Bearer ${token}`}})
+                          .then(r => r.json())
+                          .then(d => {
+                            if (d.auth_url) {
+                              const popup = window.open(d.auth_url, 'meta_auth', 'width=600,height=700');
+                              const timer = setInterval(() => {
+                                if (popup && popup.closed) {
+                                  clearInterval(timer);
+                                  apiFetch('/social/meta/status', {}, token)
+                                    .then(r => { setIgConn(r.instagram?.connected); setFbConn(r.facebook?.connected) })
+                                    .catch(() => {});
+                                }
+                              }, 1000);
+                            }
+                          })
+                          .catch(() => alert('Meta connection failed — try again'));
                       }
                     }}>
               {label}
@@ -1163,6 +1185,16 @@ function ClipPicker({ jobId, token, onNav }) {
   const [ttPrivacy, setTtPrivacy] = useState("PUBLIC_TO_EVERYONE")
   const [ttBusy,  setTtBusy]  = useState(false)
   const [ttMsg,   setTtMsg]   = useState("")
+  const [igConn,  setIgConn]  = useState(false)
+  const [igModal, setIgModal] = useState(null)
+  const [igCaption, setIgCaption] = useState("")
+  const [igBusy,  setIgBusy]  = useState(false)
+  const [igMsg,   setIgMsg]   = useState("")
+  const [fbConn,  setFbConn]  = useState(false)
+  const [fbModal, setFbModal] = useState(null)
+  const [fbTitle, setFbTitle] = useState("")
+  const [fbBusy,  setFbBusy]  = useState(false)
+  const [fbMsg,   setFbMsg]   = useState("")
 
   useEffect(() => {
     if (!jobId) { onNav("dashboard"); return }
@@ -1192,6 +1224,9 @@ function ClipPicker({ jobId, token, onNav }) {
       .catch(() => {})
     apiFetch("/social/tiktok/status", {}, token)
       .then(r => setTtConn(r.connected))
+      .catch(() => {})
+    apiFetch("/social/meta/status", {}, token)
+      .then(r => { setIgConn(r.instagram?.connected); setFbConn(r.facebook?.connected) })
       .catch(() => {})
   }, [token])
 
@@ -1383,6 +1418,18 @@ function ClipPicker({ jobId, token, onNav }) {
                   <button style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6, border:"1px solid #333" }}
                           onClick={e => { e.stopPropagation(); setTtModal(clip); setTtTitle(clip.hook||""); setTtMsg("") }}>
                     🎵 TikTok
+                  </button>
+                )}
+                {igConn && (
+                  <button style={{ ...css.btn("#833AB4", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                          onClick={e => { e.stopPropagation(); setIgModal(clip); setIgCaption(clip.hook||""); setIgMsg("") }}>
+                    📸 Instagram
+                  </button>
+                )}
+                {fbConn && (
+                  <button style={{ ...css.btn("#1877F2", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                          onClick={e => { e.stopPropagation(); setFbModal(clip); setFbTitle(clip.hook||""); setFbMsg("") }}>
+                    👍 Facebook
                   </button>
                 )}
                 </div>
@@ -1713,6 +1760,58 @@ function ManageAccess({ token, onNav }) {
             </div>
           ))}
         </div>
+
+      {igModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setIgModal(null);setIgMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>📸 Post to Instagram</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {igModal.filename}</div>
+            <textarea placeholder="Caption (optional — hashtags welcome)" value={igCaption} onChange={e=>setIgCaption(e.target.value)} rows={3}
+                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
+            <div style={{fontSize:12,color:C.dim}}>Posts as an Instagram Reel. Your clip will appear on your profile shortly after upload.</div>
+            {igMsg && <div style={{fontSize:13,color:igMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{igMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setIgModal(null);setIgMsg("")}}>Cancel</button>
+              <button style={{...css.btn("#833AB4",C.dark),opacity:igBusy?0.5:1}} disabled={igBusy}
+                      onClick={async()=>{
+                        setIgBusy(true); setIgMsg("")
+                        try {
+                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: igModal.filename, caption: igCaption })
+                          await apiFetch("/social/instagram/upload?"+ps, {method:"POST"}, token)
+                          setIgMsg("✅ Posted to Instagram! It will appear on your profile shortly.")
+                        } catch(e) { setIgMsg("❌ "+e.message) }
+                        setIgBusy(false)
+                      }}>{igBusy?"Posting…":"Post to Instagram"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {fbModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setFbModal(null);setFbMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>👍 Post to Facebook</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {fbModal.filename}</div>
+            <input placeholder="Title (optional)" value={fbTitle} onChange={e=>setFbTitle(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <div style={{fontSize:12,color:C.dim}}>Posts to your Facebook Page as a video.</div>
+            {fbMsg && <div style={{fontSize:13,color:fbMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{fbMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setFbModal(null);setFbMsg("")}}>Cancel</button>
+              <button style={{...css.btn("#1877F2",C.dark),opacity:fbBusy?0.5:1}} disabled={fbBusy}
+                      onClick={async()=>{
+                        setFbBusy(true); setFbMsg("")
+                        try {
+                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: fbModal.filename, title: fbTitle })
+                          await apiFetch("/social/facebook/upload?"+ps, {method:"POST"}, token)
+                          setFbMsg("✅ Posted to Facebook! Your video is processing and will appear on your Page shortly.")
+                        } catch(e) { setFbMsg("❌ "+e.message) }
+                        setFbBusy(false)
+                      }}>{fbBusy?"Posting…":"Post to Facebook"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       )}
     </div>
   )
