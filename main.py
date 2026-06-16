@@ -131,6 +131,12 @@ TIKTOK_CLIENT_SECRET  = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
 TIKTOK_REDIRECT_URI   = "https://backend-production-33b3.up.railway.app/auth/tiktok/callback"
 TIKTOK_SCOPES         = "user.info.basic,video.upload,video.publish"
 
+META_APP_ID       = os.getenv("META_APP_ID", "").strip()
+META_APP_SECRET   = os.getenv("META_APP_SECRET", "").strip()
+META_REDIRECT_URI = "https://backend-production-33b3.up.railway.app/auth/meta/callback"
+META_SCOPES       = "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts"
+META_GRAPH_VER    = "v19.0"
+
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
 # ── Admin / owner accounts — bypass all token checks ──────────────
@@ -1866,6 +1872,305 @@ async def tiktok_upload(
             chunk_num += 1
 
     return {"publish_id": publish_id, "status": "processing"}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  META (FACEBOOK + INSTAGRAM) OAUTH + UPLOAD ROUTES
+# ══════════════════════════════════════════════════════════════════
+
+import hmac as _hmac, hashlib as _hashlib, time as _time
+
+_SERVE_SECRET = os.getenv("CLIPS_SERVE_SECRET", "sdp-clips-serve-secret").encode()
+
+def _serve_sig(job_id: str, filename: str, exp: int) -> str:
+    msg = f"{job_id}:{filename}:{exp}".encode()
+    return _hmac.new(_SERVE_SECRET, msg, _hashlib.sha256).hexdigest()[:20]
+
+@app.get("/clips/serve/{job_id}/{filename}")
+def serve_clip_temp(job_id: str, filename: str, sig: str, exp: int):
+    """Short-lived public URL used by Instagram to download the clip video."""
+    if _time.time() > exp:
+        raise HTTPException(403, "Link expired")
+    if not _hmac.compare_digest(sig, _serve_sig(job_id, filename, exp)):
+        raise HTTPException(403, "Invalid signature")
+    clip_path = JOBS_DIR / job_id / filename
+    if not clip_path.exists():
+        raise HTTPException(404, "Clip not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(str(clip_path), media_type="video/mp4")
+
+
+@app.get("/social/meta/auth")
+def meta_auth(current_user: User = Depends(get_current_user)):
+    """Return Meta (Facebook) OAuth URL."""
+    import urllib.parse
+    if not META_APP_ID:
+        raise HTTPException(500, "Meta not configured — add META_APP_ID to Railway vars")
+    params = {
+        "client_id":     META_APP_ID,
+        "redirect_uri":  META_REDIRECT_URI,
+        "scope":         META_SCOPES,
+        "response_type": "code",
+        "state":         str(current_user.id),
+    }
+    url = f"https://www.facebook.com/{META_GRAPH_VER}/dialog/oauth?" + urllib.parse.urlencode(params)
+    return {"auth_url": url}
+
+
+@app.get("/auth/meta/callback")
+def meta_callback(code: str = None, state: str = None,
+                  error: str = None, db: Session = Depends(get_db)):
+    """Exchange Meta OAuth code for tokens; store IG + FB Page accounts."""
+    from fastapi.responses import HTMLResponse
+    if error or not code:
+        err_msg = error or "no code returned"
+        return HTMLResponse(
+            "<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+            f"Meta auth failed: {err_msg}</p>"
+        )
+    try:
+        import requests as _req
+        gbase = f"https://graph.facebook.com/{META_GRAPH_VER}"
+
+        # Exchange code for short-lived user token
+        td = _req.get(f"{gbase}/oauth/access_token", params={
+            "client_id":     META_APP_ID,
+            "client_secret": META_APP_SECRET,
+            "redirect_uri":  META_REDIRECT_URI,
+            "code":          code,
+        }, timeout=20).json()
+        short_token = td.get("access_token")
+        if not short_token:
+            return HTMLResponse(
+                "<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+                f"Token exchange failed: {td}</p>"
+            )
+
+        # Exchange for long-lived token (~60 days)
+        ll = _req.get(f"{gbase}/oauth/access_token", params={
+            "grant_type":        "fb_exchange_token",
+            "client_id":         META_APP_ID,
+            "client_secret":     META_APP_SECRET,
+            "fb_exchange_token": short_token,
+        }, timeout=20).json()
+        user_token = ll.get("access_token", short_token)
+        expires_in = ll.get("expires_in", 5184000)
+
+        user_id = state
+
+        # Get Facebook Pages
+        pages = _req.get(f"{gbase}/me/accounts", params={
+            "access_token": user_token,
+            "fields": "id,name,access_token",
+        }, timeout=20).json().get("data", [])
+
+        fb_saved = ig_saved = 0
+
+        for page in pages:
+            page_token = page.get("access_token", user_token)
+            page_id    = page["id"]
+
+            # Save Facebook Page account (first page only)
+            if not fb_saved:
+                sa = db.query(SocialAccount).filter(
+                    SocialAccount.user_id == user_id,
+                    SocialAccount.platform == "facebook",
+                ).first()
+                if not sa:
+                    sa = SocialAccount(user_id=user_id, platform="facebook")
+                    db.add(sa)
+                sa.access_token     = enc_token(page_token)
+                sa.refresh_token    = page_id
+                sa.account_name     = page.get("name", "Facebook Page")
+                sa.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                fb_saved += 1
+
+            # Get Instagram Business/Creator account linked to this page
+            if not ig_saved:
+                ig_data = _req.get(f"{gbase}/{page_id}", params={
+                    "access_token": page_token,
+                    "fields": "instagram_business_account{id,username}",
+                }, timeout=20).json()
+                iba = ig_data.get("instagram_business_account", {})
+                if iba.get("id"):
+                    sa = db.query(SocialAccount).filter(
+                        SocialAccount.user_id == user_id,
+                        SocialAccount.platform == "instagram",
+                    ).first()
+                    if not sa:
+                        sa = SocialAccount(user_id=user_id, platform="instagram")
+                        db.add(sa)
+                    sa.access_token     = enc_token(page_token)
+                    sa.refresh_token    = iba["id"]
+                    sa.account_name     = iba.get("username", "Instagram")
+                    sa.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                    ig_saved += 1
+
+        db.commit()
+
+        connected_str = " & ".join(filter(None, [
+            "Facebook" if fb_saved else "",
+            "Instagram" if ig_saved else "",
+        ])) or "Meta account"
+
+        return HTMLResponse(f"""
+<html>
+<body style="background:#000;font-family:sans-serif;text-align:center;padding-top:80px">
+  <p style="color:#fff;font-size:18px">&#x2705; {connected_str} connected!</p>
+  <p style="color:#888;font-size:14px">You can close this window.</p>
+  <script>
+    if (window.opener) {{ window.opener.postMessage('meta_connected', '*'); window.close(); }}
+  </script>
+</body>
+</html>""")
+    except Exception as e:
+        return HTMLResponse(
+            "<p style='color:red;font-family:sans-serif;text-align:center;margin-top:80px'>"
+            f"Internal error: {e}</p>"
+        )
+
+
+@app.get("/social/meta/status")
+def meta_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    fb = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "facebook",
+    ).first()
+    ig = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "instagram",
+    ).first()
+    return {
+        "facebook":  {"connected": bool(fb), "account_name": fb.account_name if fb else ""},
+        "instagram": {"connected": bool(ig), "account_name": ig.account_name if ig else ""},
+    }
+
+
+@app.delete("/social/meta/disconnect")
+def meta_disconnect(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    for platform in ("facebook", "instagram"):
+        sa = db.query(SocialAccount).filter(
+            SocialAccount.user_id == str(current_user.id),
+            SocialAccount.platform == platform,
+        ).first()
+        if sa:
+            db.delete(sa)
+    db.commit()
+    return {"disconnected": True}
+
+
+@app.post("/social/instagram/upload")
+async def instagram_upload(
+    clip_job_id: str,
+    clip_filename: str,
+    caption: str = "",
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a clip as an Instagram Reel via the Graph API."""
+    sa = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "instagram",
+    ).first()
+    if not sa:
+        raise HTTPException(400, "Instagram account not connected")
+
+    clip_path = JOBS_DIR / clip_job_id / clip_filename
+    if not clip_path.exists():
+        raise HTTPException(404, "Clip file not found")
+
+    import requests as _req, asyncio as _asyncio
+    ig_user_id   = sa.refresh_token
+    access_token = dec_token(sa.access_token)
+    gbase        = f"https://graph.facebook.com/{META_GRAPH_VER}"
+
+    # Build a 10-minute signed public URL for the clip
+    exp       = int(_time.time()) + 600
+    sig       = _serve_sig(clip_job_id, clip_filename, exp)
+    video_url = (
+        f"https://backend-production-33b3.up.railway.app"
+        f"/clips/serve/{clip_job_id}/{clip_filename}?sig={sig}&exp={exp}"
+    )
+
+    # Step 1: Create Reels container
+    cdata = _req.post(f"{gbase}/{ig_user_id}/media", params={
+        "access_token":  access_token,
+        "media_type":    "REELS",
+        "video_url":     video_url,
+        "caption":       caption[:2200],
+        "share_to_feed": "true",
+    }, timeout=30).json()
+    container_id = cdata.get("id")
+    if not container_id:
+        raise HTTPException(502, f"Instagram container creation failed: {cdata}")
+
+    # Step 2: Poll until FINISHED (max 5 min)
+    for _ in range(30):
+        await _asyncio.sleep(10)
+        sdata = _req.get(f"{gbase}/{container_id}", params={
+            "access_token": access_token,
+            "fields":       "status_code,status",
+        }, timeout=15).json()
+        sc = sdata.get("status_code", "")
+        if sc == "FINISHED":
+            break
+        if sc == "ERROR":
+            raise HTTPException(502, f"Instagram upload error: {sdata}")
+    else:
+        raise HTTPException(504, "Instagram upload timed out")
+
+    # Step 3: Publish
+    pdata = _req.post(f"{gbase}/{ig_user_id}/media_publish", params={
+        "access_token": access_token,
+        "creation_id":  container_id,
+    }, timeout=30).json()
+    if not pdata.get("id"):
+        raise HTTPException(502, f"Instagram publish failed: {pdata}")
+
+    return {"media_id": pdata["id"], "status": "published"}
+
+
+@app.post("/social/facebook/upload")
+async def facebook_upload(
+    clip_job_id: str,
+    clip_filename: str,
+    title: str = "",
+    description: str = "",
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a clip as a Facebook Page video."""
+    sa = db.query(SocialAccount).filter(
+        SocialAccount.user_id == str(current_user.id),
+        SocialAccount.platform == "facebook",
+    ).first()
+    if not sa:
+        raise HTTPException(400, "Facebook account not connected")
+
+    clip_path = JOBS_DIR / clip_job_id / clip_filename
+    if not clip_path.exists():
+        raise HTTPException(404, "Clip file not found")
+
+    import requests as _req
+    page_id      = sa.refresh_token
+    access_token = dec_token(sa.access_token)
+
+    with open(clip_path, "rb") as f:
+        udata = _req.post(
+            f"https://graph-video.facebook.com/{META_GRAPH_VER}/{page_id}/videos",
+            data={
+                "access_token": access_token,
+                "title":        (title[:255] or "SDP Short"),
+                "description":  description[:500],
+            },
+            files={"source": (clip_filename, f, "video/mp4")},
+            timeout=300,
+        ).json()
+
+    if not udata.get("id"):
+        raise HTTPException(502, f"Facebook upload failed: {udata}")
+
+    return {"video_id": udata["id"], "status": "processing"}
 
 
 #  ADMIN — YOUTUBE COOKIES UPLOAD
