@@ -63,6 +63,25 @@ async function downloadWithAuth(url, filename, token) {
   URL.revokeObjectURL(blobUrl)
 }
 
+async function uploadFileWithAuth(file, token) {
+  const fd = new FormData()
+  fd.append("file", file)
+  const res = await fetch(`${API}/uploads`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` },
+    credentials: 'include',
+    body: fd
+  })
+  let data = {}
+  try { data = await res.json() } catch {}
+  if (!res.ok) {
+    const detail = data.detail
+    throw new Error(Array.isArray(detail) ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+                    : detail ? String(detail) : "Upload failed")
+  }
+  return data
+}
+
 // ── VIDEO PREVIEW MODAL ──────────────────────────────────────────
 
 function VideoPreview({ url, token, filename, onClose }) {
@@ -93,6 +112,100 @@ function VideoPreview({ url, token, filename, onClose }) {
             ⬇️ Download
           </button>
           <button onClick={onClose} style={{ ...css.btn(C.field, C.dim), flex:1 }}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── SCHEDULE POST MODAL (reusable — Dashboard uploads + ClipPicker clips) ──
+function ScheduleModal({ jobId, filename, defaultTitle="", connected, token, onClose, onScheduled }) {
+  const platformOptions = [
+    { key:"youtube",   label:"▶️ YouTube",   color:C.red },
+    { key:"tiktok",    label:"🎵 TikTok",    color:"#010101" },
+    { key:"instagram", label:"📸 Instagram", color:"#833AB4" },
+    { key:"facebook",  label:"👍 Facebook",  color:"#1877F2" },
+  ].filter(p => connected[p.key])
+
+  const [platform, setPlatform] = useState(platformOptions[0]?.key || "")
+  const [title,    setTitle]    = useState(defaultTitle)
+  const [desc,     setDesc]     = useState("")
+  const [privacy,  setPrivacy]  = useState("PUBLIC_TO_EVERYONE")
+  const [when,     setWhen]     = useState("")
+  const [busy,     setBusy]     = useState(false)
+  const [msg,      setMsg]      = useState("")
+
+  const submit = async () => {
+    if (!platform) { setMsg("❌ Connect a social account first"); return }
+    if (!when)     { setMsg("❌ Pick a date & time"); return }
+    setBusy(true); setMsg("")
+    try {
+      const r = await apiFetch("/schedule", { method:"POST", body: JSON.stringify({
+        job_id: jobId, clip_filename: filename, platform,
+        title, description: desc, privacy_level: privacy,
+        scheduled_time: new Date(when).toISOString(),
+      })}, token)
+      setMsg("✅ Scheduled!")
+      onScheduled && onScheduled(r)
+      setTimeout(onClose, 700)
+    } catch(e) { setMsg("❌ " + e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={onClose}>
+      <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,fontSize:18,color:C.text}}>📅 Schedule Post</div>
+        <div style={{color:C.dim,fontSize:12}}>Clip: {filename}</div>
+
+        {platformOptions.length === 0 ? (
+          <div style={{color:C.orange,fontSize:13}}>Connect a social account on your dashboard first.</div>
+        ) : (
+          <>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:C.dim,letterSpacing:1,textTransform:"uppercase"}}>Platform</label>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {platformOptions.map(p => (
+                  <button key={p.key} onClick={() => setPlatform(p.key)}
+                          style={{...css.btn(p.key===platform ? p.color : C.field, p.key===platform ? (p.key==="tiktok"?C.text:C.dark) : C.dim),
+                                  fontSize:12, padding:"6px 14px", border: p.key===platform ? "none" : `1px solid ${C.border}`}}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <input placeholder="Title / Caption" value={title} onChange={e=>setTitle(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <textarea placeholder="Description (optional)" value={desc} onChange={e=>setDesc(e.target.value)} rows={2}
+                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
+            {platform === "tiktok" && (
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:11,color:C.dim,letterSpacing:1,textTransform:"uppercase"}}>Privacy</label>
+                <select value={privacy} onChange={e=>setPrivacy(e.target.value)}
+                        style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}}>
+                  <option value="PUBLIC_TO_EVERYONE">Public</option>
+                  <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                  <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                  <option value="SELF_ONLY">Private (Only me)</option>
+                </select>
+              </div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:C.dim,letterSpacing:1,textTransform:"uppercase"}}>Date &amp; time</label>
+              <input type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none",colorScheme:"dark"}} />
+            </div>
+          </>
+        )}
+
+        {msg && <div style={{fontSize:13,color:msg.startsWith("✅")?C.emerald:C.red}}>{msg}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button style={css.btn(C.field,C.dim)} onClick={onClose}>Cancel</button>
+          {platformOptions.length > 0 && (
+            <button style={{...css.btn(C.gold,C.dark),opacity:busy?0.5:1}} disabled={busy} onClick={submit}>
+              {busy ? "Scheduling…" : "📅 Schedule"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -841,6 +954,11 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   const [ttConn,  setTtConn]  = useState(false)
   const [igConn,  setIgConn]  = useState(false)
   const [fbConn,  setFbConn]  = useState(false)
+  const [uploads,    setUploads]    = useState([])
+  const [schedules,  setSchedules]  = useState([])
+  const [scheduleFor, setScheduleFor] = useState(null)   // {jobId, filename, title}
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadMsg,  setUploadMsg]  = useState("")
 
   const fetchJobs = useCallback(() => {
     apiFetch("/jobs",{},token).then(setJobs).catch(console.error)
@@ -854,11 +972,45 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
     } catch(err) { alert(err.message) }
   }
 
+  const fetchUploads = useCallback(() => {
+    apiFetch("/uploads",{},token).then(setUploads).catch(console.error)
+  },[token])
+
+  const fetchSchedules = useCallback(() => {
+    apiFetch("/schedule",{},token).then(setSchedules).catch(console.error)
+  },[token])
+
+  const uploadFile = async (file) => {
+    if (!file) return
+    setUploadBusy(true); setUploadMsg("")
+    try {
+      await uploadFileWithAuth(file, token)
+      setUploadMsg("✅ Uploaded!")
+      fetchUploads()
+    } catch(e) { setUploadMsg("❌ " + e.message) }
+    setUploadBusy(false)
+  }
+
+  const deleteUpload = async (jobId) => {
+    if (!confirm("Delete this upload? This can't be undone.")) return
+    try {
+      await apiFetch(`/jobs/${jobId}`, {method:"DELETE"}, token)
+      fetchUploads(); fetchSchedules()
+    } catch(e) { alert(e.message) }
+  }
+
+  const cancelSchedule = async (id) => {
+    try {
+      await apiFetch(`/schedule/${id}`, {method:"DELETE"}, token)
+      fetchSchedules()
+    } catch(e) { alert(e.message) }
+  }
+
   useEffect(() => {
-    setLoading(false); fetchJobs()
-    const id = setInterval(fetchJobs, 5000)
+    setLoading(false); fetchJobs(); fetchUploads(); fetchSchedules()
+    const id = setInterval(() => { fetchJobs(); fetchUploads(); fetchSchedules() }, 5000)
     return () => clearInterval(id)
-  },[fetchJobs])
+  },[fetchJobs, fetchUploads, fetchSchedules])
 
   useEffect(() => {
     apiFetch("/social/youtube/status", {}, token)
@@ -900,6 +1052,11 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
   return (
     <div style={{ maxWidth:960, margin:"0 auto", padding:"32px 24px" }}>
       {preview && <VideoPreview url={preview.url} token={token} filename={preview.filename} onClose={() => setPreview(null)} />}
+      {scheduleFor && (
+        <ScheduleModal jobId={scheduleFor.jobId} filename={scheduleFor.filename} defaultTitle={scheduleFor.title||""}
+                       connected={{youtube:ytConn, tiktok:ttConn, instagram:igConn, facebook:fbConn}}
+                       token={token} onClose={() => setScheduleFor(null)} onScheduled={fetchSchedules} />
+      )}
       {/* Stats */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16, marginBottom:24 }}>
         <div style={css.card}>
@@ -1067,6 +1224,91 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                 onClick={() => onNav("new")}>⚡ New Job</button>
       </div>
 
+      {/* Upload Your Own Edit */}
+      <div style={{ ...css.card, marginBottom:24, border:`1px solid ${C.border}` }}>
+        <div style={css.sec}>Upload Your Edit</div>
+        <div style={{ color:C.dim, fontSize:13, marginBottom:12 }}>
+          Already edited your own video? Upload it to post or schedule it — no AI processing.
+          Stored for 24 hours or up to 10 uploads, whichever comes first.
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+          <label style={{ ...css.btn(C.field, C.text), cursor:"pointer", border:`1px solid ${C.border}` }}>
+            📁 Choose Video (.mp4/.mov)
+            <input type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime"
+                   style={{ display:"none" }}
+                   onChange={e => { uploadFile(e.target.files[0]); e.target.value = "" }} />
+          </label>
+          {uploadBusy && <span style={{ color:C.gold, fontSize:13 }}>⏳ Uploading…</span>}
+          {uploadMsg && <span style={{ color: uploadMsg.startsWith("✅") ? C.emerald : C.red, fontSize:13 }}>{uploadMsg}</span>}
+        </div>
+
+        {uploads.length > 0 && (
+          <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:8 }}>
+            {uploads.map(u => {
+              const clip = u.clips?.[0]
+              const diff = u.expires_at ? new Date(u.expires_at) - new Date() : 0
+              const hrsLeft = diff > 0 ? Math.floor(diff/3600000) : 0
+              const minsLeft = diff > 0 ? Math.floor((diff%3600000)/60000) : 0
+              return (
+                <div key={u.id} style={{ ...css.card, padding:"12px 16px", border:`1px solid ${C.border}` }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:8 }}>
+                    <div style={{ flex:"1 1 160px", minWidth:0, fontSize:13, color:C.text,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      🎬 {clip?.original_name || clip?.filename || "Upload"}
+                    </div>
+                    <div style={{ color: diff > 0 ? C.gold : C.red, fontSize:11 }}>
+                      {diff > 0 ? `⏱ ${hrsLeft}h ${minsLeft}m left` : "Expired"}
+                    </div>
+                    {clip && (
+                      <>
+                        <button style={{ ...css.btn(C.field, C.gold), fontSize:11, padding:"5px 12px", border:`1px solid ${C.gold}40` }}
+                                onClick={() => setPreview({ url:`${API}${clip.url}`, filename:clip.filename })}>▶</button>
+                        <button style={{ ...css.btn(C.field, C.emerald), fontSize:11, padding:"5px 12px" }}
+                                onClick={() => downloadWithAuth(`${API}${clip.url}`, clip.filename, token)}>⬇️</button>
+                        <button style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"5px 12px" }}
+                                onClick={() => setScheduleFor({ jobId:u.id, filename:clip.filename, title:clip.original_name||"" })}>📅 Schedule</button>
+                      </>
+                    )}
+                    <button style={{ ...css.btn(C.field, C.red), fontSize:11, padding:"5px 12px", border:`1px solid ${C.red}30` }}
+                            onClick={() => deleteUpload(u.id)}>🗑</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Scheduled Posts */}
+      {schedules.length > 0 && (
+        <div style={{ ...css.card, marginBottom:24, border:`1px solid ${C.border}` }}>
+          <div style={css.sec}>Scheduled Posts</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {schedules.map(s => (
+              <div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:6,
+                                       padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:12, color:C.dim, textTransform:"capitalize", minWidth:80 }}>{s.platform}</div>
+                <div style={{ flex:"1 1 160px", minWidth:0, fontSize:13, color:C.text,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {s.title || s.clip_filename}
+                </div>
+                <div style={{ fontSize:11, color:C.gold }}>
+                  {new Date(s.scheduled_time).toLocaleString()}
+                </div>
+                <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase",
+                              color: s.status==="posted"?C.emerald : s.status==="failed"?C.red : C.dim }}>
+                  {s.status}
+                </div>
+                {s.status === "pending" && (
+                  <button style={{ ...css.btn(C.field, C.red), fontSize:11, padding:"4px 10px", border:`1px solid ${C.red}30` }}
+                          onClick={() => cancelSchedule(s.id)}>Cancel</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={css.sec}>Recent Jobs</div>
       {loading ? <div style={{ color:C.dim }}>Loading…</div> :
        jobs.length === 0 ? (
@@ -1205,6 +1447,7 @@ function ClipPicker({ jobId, token, onNav }) {
   const [fbTitle, setFbTitle] = useState("")
   const [fbBusy,  setFbBusy]  = useState(false)
   const [fbMsg,   setFbMsg]   = useState("")
+  const [scheduleModal, setScheduleModal] = useState(null)   // clip object
 
   useEffect(() => {
     if (!jobId) { onNav("dashboard"); return }
@@ -1442,6 +1685,12 @@ function ClipPicker({ jobId, token, onNav }) {
                     👍 Facebook
                   </button>
                 )}
+                {(ytConn || ttConn || igConn || fbConn) && (
+                  <button style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
+                          onClick={e => { e.stopPropagation(); setScheduleModal(clip) }}>
+                    📅 Schedule
+                  </button>
+                )}
                 </div>
               </div>
             )
@@ -1572,6 +1821,12 @@ function ClipPicker({ jobId, token, onNav }) {
             </div>
           </div>
         </div>
+      )}
+
+      {scheduleModal && (
+        <ScheduleModal jobId={job.id} filename={scheduleModal.filename} defaultTitle={scheduleModal.hook||""}
+                       connected={{youtube:ytConn, tiktok:ttConn, instagram:igConn, facebook:fbConn}}
+                       token={token} onClose={() => setScheduleModal(null)} onScheduled={() => {}} />
       )}
     </div>
   )
