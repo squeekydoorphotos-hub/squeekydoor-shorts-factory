@@ -1511,6 +1511,58 @@ function ClipPicker({ jobId, token, onNav }) {
           </div>
         </div>
       )}
+
+      {igModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setIgModal(null);setIgMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>📸 Post to Instagram</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {igModal.filename}</div>
+            <textarea placeholder="Caption (optional — hashtags welcome)" value={igCaption} onChange={e=>setIgCaption(e.target.value)} rows={3}
+                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
+            <div style={{fontSize:12,color:C.dim}}>Posts as an Instagram Reel. Your clip will appear on your profile shortly after upload.</div>
+            {igMsg && <div style={{fontSize:13,color:igMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{igMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setIgModal(null);setIgMsg("")}}>Cancel</button>
+              <button style={{...css.btn("#833AB4",C.dark),opacity:igBusy?0.5:1}} disabled={igBusy}
+                      onClick={async()=>{
+                        setIgBusy(true); setIgMsg("")
+                        try {
+                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: igModal.filename, caption: igCaption })
+                          await apiFetch("/social/instagram/upload?"+ps, {method:"POST"}, token)
+                          setIgMsg("✅ Posted to Instagram! It will appear on your profile shortly.")
+                        } catch(e) { setIgMsg("❌ "+e.message) }
+                        setIgBusy(false)
+                      }}>{igBusy?"Posting…":"Post to Instagram"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {fbModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setFbModal(null);setFbMsg("")}}>
+          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:18,color:C.text}}>👍 Post to Facebook</div>
+            <div style={{color:C.muted,fontSize:12}}>Clip: {fbModal.filename}</div>
+            <input placeholder="Title (optional)" value={fbTitle} onChange={e=>setFbTitle(e.target.value)}
+                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
+            <div style={{fontSize:12,color:C.dim}}>Posts to your Facebook Page as a video.</div>
+            {fbMsg && <div style={{fontSize:13,color:fbMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{fbMsg}</div>}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setFbModal(null);setFbMsg("")}}>Cancel</button>
+              <button style={{...css.btn("#1877F2",C.dark),opacity:fbBusy?0.5:1}} disabled={fbBusy}
+                      onClick={async()=>{
+                        setFbBusy(true); setFbMsg("")
+                        try {
+                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: fbModal.filename, title: fbTitle })
+                          await apiFetch("/social/facebook/upload?"+ps, {method:"POST"}, token)
+                          setFbMsg("✅ Posted to Facebook! Your video is processing and will appear on your Page shortly.")
+                        } catch(e) { setFbMsg("❌ "+e.message) }
+                        setFbBusy(false)
+                      }}>{fbBusy?"Posting…":"Post to Facebook"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1760,58 +1812,6 @@ function ManageAccess({ token, onNav }) {
             </div>
           ))}
         </div>
-
-      {igModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setIgModal(null);setIgMsg("")}}>
-          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:18,color:C.text}}>📸 Post to Instagram</div>
-            <div style={{color:C.muted,fontSize:12}}>Clip: {igModal.filename}</div>
-            <textarea placeholder="Caption (optional — hashtags welcome)" value={igCaption} onChange={e=>setIgCaption(e.target.value)} rows={3}
-                      style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,resize:"vertical",outline:"none"}} />
-            <div style={{fontSize:12,color:C.dim}}>Posts as an Instagram Reel. Your clip will appear on your profile shortly after upload.</div>
-            {igMsg && <div style={{fontSize:13,color:igMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{igMsg}</div>}
-            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setIgModal(null);setIgMsg("")}}>Cancel</button>
-              <button style={{...css.btn("#833AB4",C.dark),opacity:igBusy?0.5:1}} disabled={igBusy}
-                      onClick={async()=>{
-                        setIgBusy(true); setIgMsg("")
-                        try {
-                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: igModal.filename, caption: igCaption })
-                          await apiFetch("/social/instagram/upload?"+ps, {method:"POST"}, token)
-                          setIgMsg("✅ Posted to Instagram! It will appear on your profile shortly.")
-                        } catch(e) { setIgMsg("❌ "+e.message) }
-                        setIgBusy(false)
-                      }}>{igBusy?"Posting…":"Post to Instagram"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {fbModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999}} onClick={()=>{setFbModal(null);setFbMsg("")}}>
-          <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"28px 32px",width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:18,color:C.text}}>👍 Post to Facebook</div>
-            <div style={{color:C.muted,fontSize:12}}>Clip: {fbModal.filename}</div>
-            <input placeholder="Title (optional)" value={fbTitle} onChange={e=>setFbTitle(e.target.value)}
-                   style={{background:C.dark,border:"1px solid "+C.border,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}} />
-            <div style={{fontSize:12,color:C.dim}}>Posts to your Facebook Page as a video.</div>
-            {fbMsg && <div style={{fontSize:13,color:fbMsg.startsWith("✅")?C.emerald:"#ef4444"}}>{fbMsg}</div>}
-            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-              <button style={css.btn(C.muted,C.dark)} onClick={()=>{setFbModal(null);setFbMsg("")}}>Cancel</button>
-              <button style={{...css.btn("#1877F2",C.dark),opacity:fbBusy?0.5:1}} disabled={fbBusy}
-                      onClick={async()=>{
-                        setFbBusy(true); setFbMsg("")
-                        try {
-                          const ps = new URLSearchParams({ clip_job_id: job.id, clip_filename: fbModal.filename, title: fbTitle })
-                          await apiFetch("/social/facebook/upload?"+ps, {method:"POST"}, token)
-                          setFbMsg("✅ Posted to Facebook! Your video is processing and will appear on your Page shortly.")
-                        } catch(e) { setFbMsg("❌ "+e.message) }
-                        setFbBusy(false)
-                      }}>{fbBusy?"Posting…":"Post to Facebook"}</button>
-            </div>
-          </div>
-        </div>
-      )}
       )}
     </div>
   )
