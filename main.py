@@ -1337,7 +1337,7 @@ def process_job(job_id: str, settings: dict):
                         if "_9x16" in p or (not both and vertical):
                             log(f"  #🎯 Smart reframe…")
                             try:
-                                smart_reframe(p, p + "_rf.mp4", smoothness=0.3, log_fn=log)
+                                smart_reframe(p, p + "_rf.mp4", smoothness=0.35, log_fn=log, ass_content=ass)
                                 os.replace(p + "_rf.mp4", p)
                             except Exception as ex:
                                 log(f"  #⚠️  Reframe failed: {ex}")

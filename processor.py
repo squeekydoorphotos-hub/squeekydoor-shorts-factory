@@ -41,6 +41,11 @@ def _find_bin(name: str) -> str:
 FFMPEG  = _find_bin("ffmpeg")
 FFPROBE = _find_bin("ffprobe")
 
+# Shared high-quality encode settings (was crf 22 / preset fast everywhere —
+# bumped for noticeably crisper output at a modest time cost).
+ENC_CRF    = "18"
+ENC_PRESET = "medium"
+
 
 # ══════════════════════════════════════════════════════════════════
 #  DOWNLOAD
@@ -117,7 +122,10 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
     def _base_opts(client: str, use_proxy: bool, use_cookies: bool) -> dict:
         o = {
             "outtmpl": str(Path(out_dir) / "%(title).60s.%(ext)s"),
-            "format":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+            # Prefer the highest-res real source available (up to 4K) instead of
+            # capping format selection — downstream encode now scales to match
+            # whatever comes in, so a better source directly means a crisper clip.
+            "format":  "bestvideo[ext=mp4][height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best",
             "merge_output_format": "mp4",
             "quiet": True, "no_warnings": True,
             "progress_hooks": [_hook],
@@ -259,7 +267,14 @@ COLOUR_MAP = {
 
 def build_ass_content(segments, clip_start, clip_end, vertical,
                       font_family="Arial", font_file=None,
-                      font_size=52, colour="white") -> str:
+                      font_size=52, colour="white", flare=True) -> str:
+    """
+    flare=True adds a quick "pop in + glow pulse" animation to every caption
+    chunk: it scales in from ~130% with a heavy blur (glow) and settles to
+    100% with a light blur, using the caption's own outline colour as the
+    glow colour. Pure ASS override tags — no extra rendering pass needed,
+    libass (ffmpeg's built-in ass filter) animates it for free.
+    """
     tc, oc = COLOUR_MAP.get(colour, COLOUR_MAP["white"])
     rx, ry = (1080, 1920) if vertical else (1920, 1080)
     mv     = 80 if vertical else 60
@@ -277,6 +292,18 @@ Style: Default,{font_family},{font_size},{tc},&H000000FF,{oc},&H80000000,-1,0,0,
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 """
+    # Glow-pop override block prepended to each chunk's text.
+    # \fad        quick fade in/out so the pop doesn't hard-cut
+    # \t(0,120,…) over the first 120ms: scale 132%→100%, blur 9→1 (glow settles)
+    # \t(120,..)  tiny extra blur breathing pulse later in the line's life so it
+    #             still feels alive even on longer-held chunks
+    glow_tag = (
+        f"{{\\fad(70,60)"
+        f"\\t(0,120,\\fscx132\\fscy132\\blur9)"
+        f"\\t(120,240,\\fscx100\\fscy100\\blur1.2)"
+        f"\\t(240,420,\\blur2.4)\\t(420,600,\\blur1)}}"
+    ) if flare else ""
+
     MAX_W = 6
     lines = []
     for seg in segments:
@@ -294,10 +321,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 if cs is None: cs = ws
                 chunk.append(w.get("word", "").strip()); ce = we
                 if len(chunk) >= MAX_W:
-                    lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{' '.join(chunk)}")
+                    lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{glow_tag}{' '.join(chunk)}")
                     chunk, cs, ce = [], None, None
             if chunk:
-                lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{' '.join(chunk)}")
+                lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{glow_tag}{' '.join(chunk)}")
         else:
             wds  = seg.get("text", "").strip().split()
             dur  = re - rs
@@ -306,8 +333,46 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 t  = " ".join(wds[i:i+MAX_W])
                 cs = rs + (i // MAX_W) * step
                 ce = min(re, cs + step)
-                lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{t}")
+                lines.append(f"Dialogue: 0,{_ts(cs)},{_ts(ce)},Default,,0,0,0,,{glow_tag}{t}")
     return header + "\n".join(lines) + "\n"
+
+
+# ══════════════════════════════════════════════════════════════════
+#  RESOLUTION HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def _probe_dims(video: str):
+    """Return (width, height) of the source video's first video stream."""
+    try:
+        r = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height",
+             "-of", "csv=p=0:s=x", video],
+            capture_output=True, text=True, timeout=15
+        )
+        w_s, h_s = r.stdout.strip().split("x")
+        return int(w_s), int(h_s)
+    except Exception:
+        return 1920, 1080  # safe fallback, matches old hardcoded assumption
+
+
+def _adaptive_vertical_dims(src_w: int, src_h: int):
+    """
+    Pick a 9:16 output size that matches what the source can actually
+    deliver, instead of always forcing 1080x1920:
+      - A 4K/1440p source now keeps its real detail (no wasted downscale).
+      - A 1080p (or smaller) source is no longer force-upscaled and blurred
+        — it crops at native height, which looks sharper on screen than an
+        upscaled-then-recompressed frame.
+      - Floored at 1080 tall / capped at 3840 tall so very low-res sources
+        still look acceptable and very high-res ones don't blow up encode time.
+    Returns (out_w, out_h), both even numbers, 9:16 ratio.
+    """
+    short_side = min(src_w, src_h) if src_w and src_h else 1080
+    h = max(1080, min(short_side, 3840))
+    w = int(round((h * 9 / 16) / 2) * 2)
+    h = int(round(h / 2) * 2)
+    return w, h
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -328,9 +393,18 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
     base, ext = os.path.splitext(out_path)
     created  = []
 
+    src_w, src_h = _probe_dims(video)
+    out_w, out_h = _adaptive_vertical_dims(src_w, src_h)
+
     def _run(output: str, vert: bool):
+        # When smart_reframe will run afterwards, this pass must NOT crop to
+        # 9:16 (smart_reframe needs the full frame to have room to pan) and
+        # must NOT burn captions yet (they'd be burned at the wrong aspect —
+        # smart_reframe burns them after cropping instead, see below).
+        defer_to_reframe = vert and smart_reframe_mode
+
         ass_path = None
-        if ass_content:
+        if ass_content and not defer_to_reframe:
             ass_path = os.path.join(tempfile.gettempdir(),
                                     f"sdp_{_uuid.uuid4().hex[:8]}.ass")
             with open(ass_path, "w", encoding="utf-8") as f:
@@ -339,8 +413,13 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
         cmd = [FFMPEG, "-y", "-ss", str(start), "-i", video, "-t", str(dur)]
         vf, af = [], []
 
-        if vert and not smart_reframe_mode:
-            vf.append("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920")
+        if vert and not defer_to_reframe:
+            vf.append(
+                f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={out_w}:{out_h}"
+            )
+        # Gentle sharpen — perceptual crispness without halo artifacts.
+        vf.append("unsharp=5:5:0.6:5:5:0.0")
         if ass_path:
             safe = ass_path.replace("\\", "/").replace(":", "\\:")
             vf.append(f"ass='{safe}'")
@@ -350,7 +429,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             af.append("loudnorm=I=-16:TP=-1.5:LRA=11")
         if af: cmd += ["-af", ",".join(af)]
 
-        cmd += ["-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
+        cmd += ["-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET, "-crf", ENC_CRF,
                 "-c:a", "aac", "-b:a", "128k", output]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if ass_path:
@@ -376,12 +455,15 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
 # ══════════════════════════════════════════════════════════════════
 
 def smart_reframe(input_path: str, output_path: str,
-                  smoothness: float, log_fn):
+                  smoothness: float, log_fn,
+                  ass_content: Optional[str] = None):
     """
     Two-pass smooth reframe:
-      Pass 1 — detect face centre-x for every frame, fill gaps, Gaussian-smooth.
+      Pass 1 — detect face centre-x for every frame, reject outliers, fill
+               gaps, Gaussian-smooth.
       Pass 2 — render each frame using the pre-computed smooth crop position.
-    Eliminates jitter caused by frame-by-frame EMA.
+    Captions (if provided) are burned in AFTER cropping, at the final
+    output resolution, so their coordinate space actually matches the frame.
     """
     import cv2
     import numpy as np
@@ -390,8 +472,8 @@ def smart_reframe(input_path: str, output_path: str,
     fps    = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w      = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    crop_w = min(w, int(h * 9 / 16))
-    OUT_W, OUT_H = 1080, 1920
+    OUT_W, OUT_H = _adaptive_vertical_dims(w, h)
+    crop_w = min(w, int(h * OUT_W / OUT_H))
 
     cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -407,7 +489,7 @@ def smart_reframe(input_path: str, output_path: str,
         scale = 640 / w
         small = cv2.resize(frame, (640, int(h * scale)))
         gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, 1.1, 4, minSize=(25, 25))
+        faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(25, 25))
         if len(faces):
             fx, fy, fw, fh = faces[0]
             cx_raw.append((fx + fw / 2) / scale)
@@ -422,6 +504,24 @@ def smart_reframe(input_path: str, output_path: str,
 
     tracked = sum(1 for c in cx_raw if c is not None)
     log_fn(f"   🎯 Face detected in {tracked}/{n} frames")
+
+    # ── Outlier rejection: a single detection that jumps far from its
+    #    neighbours is almost always a false positive, not a real cut to a
+    #    new face position — drop it and let interpolation fill the gap. ───
+    MAX_JUMP = w * 0.22  # ~1/5th of frame width in one frame is not a real face move
+    cleaned = list(cx_raw)
+    for i in range(n):
+        v = cleaned[i]
+        if v is None:
+            continue
+        neighbours = [cleaned[j] for j in range(max(0, i - 4), min(n, i + 5))
+                      if j != i and cleaned[j] is not None]
+        if not neighbours:
+            continue
+        med = float(np.median(neighbours))
+        if abs(v - med) > MAX_JUMP:
+            cleaned[i] = None
+    cx_raw = cleaned
 
     # ── Fill gaps via linear interpolation ────────────────────────
     default_cx = float(w) / 2
@@ -449,7 +549,7 @@ def smart_reframe(input_path: str, output_path: str,
     cx_smooth = np.convolve(padded, kernel, mode="valid")[:n]
 
     # ── PASS 2: render with smoothed crop positions ───────────────
-    log_fn("   🎯 Reframe pass 2: rendering…")
+    log_fn(f"   🎯 Reframe pass 2: rendering @ {OUT_W}x{OUT_H}…")
     tmp    = input_path + "_rf_raw.mp4"
     writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"),
                               fps, (OUT_W, OUT_H))
@@ -458,16 +558,30 @@ def smart_reframe(input_path: str, output_path: str,
         x1 = int(max(0, min(w - crop_w, cx_smooth[i] - half)))
         cropped = frame[:, x1:x1 + crop_w]
         writer.write(cv2.resize(cropped, (OUT_W, OUT_H),
-                                 interpolation=cv2.INTER_LINEAR))
+                                 interpolation=cv2.INTER_LANCZOS4))
     writer.release()
+
+    ass_path = None
+    vf = ["unsharp=5:5:0.6:5:5:0.0"]
+    if ass_content:
+        import uuid as _uuid
+        ass_path = os.path.join(tempfile.gettempdir(), f"sdp_{_uuid.uuid4().hex[:8]}.ass")
+        with open(ass_path, "w", encoding="utf-8") as f:
+            f.write(ass_content)
+        safe = ass_path.replace("\\", "/").replace(":", "\\:")
+        vf.append(f"ass='{safe}'")
 
     cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
-           "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+           "-vf", ",".join(vf),
+           "-c:v", "libx264", "-preset", ENC_PRESET, "-crf", ENC_CRF,
            "-c:a", "aac", "-b:a", "128k", output_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try: os.remove(tmp)
     except: pass
+    if ass_path:
+        try: os.remove(ass_path)
+        except: pass
     if r.returncode != 0:
         raise RuntimeError(f"reframe: {r.stderr[-300:]}")
 
@@ -518,7 +632,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
 
     cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
-           "-c:v", "libx264", "-threads", "4", "-preset", "fast", "-crf", "22",
+           "-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET, "-crf", ENC_CRF,
            "-c:a", "aac", "-b:a", "128k", output_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try: os.remove(tmp)
