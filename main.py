@@ -1959,10 +1959,33 @@ def meta_callback(code: str = None, state: str = None,
         user_id = state
 
         # Get Facebook Pages
-        pages = _req.get(f"{gbase}/me/accounts", params={
+        pages_resp = _req.get(f"{gbase}/me/accounts", params={
             "access_token": user_token,
             "fields": "id,name,access_token",
-        }, timeout=20).json().get("data", [])
+        }, timeout=20).json()
+        pages = pages_resp.get("data", [])
+
+        if not pages:
+            # Facebook returned zero Pages. This almost always means the
+            # user didn't pick a Page on Facebook's "choose what you allow"
+            # screen during login, or the FB account has no Page/Instagram
+            # business account at all. Tell them clearly instead of lying
+            # about success.
+            return HTMLResponse(f"""
+<html>
+<body style="background:#000;font-family:sans-serif;text-align:center;padding-top:60px">
+  <p style="color:#fff;font-size:18px">&#9888;&#65039; No Facebook Page found</p>
+  <p style="color:#888;font-size:14px;max-width:420px;margin:12px auto;line-height:1.5">
+    Facebook didn't share any Pages with this app, so nothing was connected.
+    On the Facebook screen that lists Pages to share, make sure you actually
+    select your Page (toggle it on) before continuing, then try Connect
+    Facebook again. If you don't have a Facebook Page yet, you'll need to
+    create one first &mdash; personal profiles can't be connected.
+  </p>
+  <p style="color:#888;font-size:13px">Debug: {pages_resp}</p>
+  <p style="color:#888;font-size:14px">You can close this window.</p>
+</body>
+</html>""")
 
         fb_saved = ig_saved = 0
 
