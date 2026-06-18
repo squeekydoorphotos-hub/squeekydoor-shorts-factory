@@ -1008,9 +1008,14 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                           .then(d => {
                             if (d.auth_url) {
                               const popup = window.open(d.auth_url, 'tt_auth', 'width=600,height=700');
+                              const onMsg = (e) => {
+                                if (e.data === 'tiktok_connected' && popup) popup.close();
+                              };
+                              window.addEventListener('message', onMsg);
                               const timer = setInterval(() => {
                                 if (popup && popup.closed) {
                                   clearInterval(timer);
+                                  window.removeEventListener('message', onMsg);
                                   apiFetch('/social/tiktok/status', {}, token)
                                     .then(r => setTtConn(r.connected))
                                     .catch(() => {});
@@ -1026,9 +1031,14 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                           .then(d => {
                             if (d.auth_url) {
                               const popup = window.open(d.auth_url, 'meta_auth', 'width=600,height=700');
+                              const onMsg = (e) => {
+                                if (e.data === 'meta_connected' && popup) popup.close();
+                              };
+                              window.addEventListener('message', onMsg);
                               const timer = setInterval(() => {
                                 if (popup && popup.closed) {
                                   clearInterval(timer);
+                                  window.removeEventListener('message', onMsg);
                                   apiFetch('/social/meta/status', {}, token)
                                     .then(r => { setIgConn(r.instagram?.connected); setFbConn(r.facebook?.connected) })
                                     .catch(() => {});
