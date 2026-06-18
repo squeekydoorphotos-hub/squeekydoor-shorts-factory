@@ -139,6 +139,11 @@ META_GRAPH_VER    = "v19.0"
 
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
+# ── "Upload your own edit" feature limits ──────────────────────────
+UPLOAD_MAX_PER_USER  = 10                 # max stored uploads per user
+UPLOAD_MAX_BYTES     = 500 * 1024 * 1024  # 500MB per file
+UPLOAD_EXPIRY_HOURS  = 24                 # uploads auto-delete after this
+
 # ── Admin / owner accounts — bypass all token checks ──────────────
 ADMIN_EMAILS = {
     "thelabsdp206@gmail.com",
@@ -244,6 +249,7 @@ class Job(Base):
     settings    = Column(Text, default="{}")          # JSON blob
     clips_count    = Column(Integer, default=0)
     clips_metadata = Column(Text, default="[]")  # JSON array of clip info
+    kind           = Column(String, default="ai_clip")  # ai_clip / user_upload
     log            = Column(Text, default="")
     created_at     = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -274,6 +280,23 @@ class SocialAccount(Base):
     connected_at     = Column(DateTime, default=datetime.utcnow)
 
 
+class ScheduledPost(Base):
+    __tablename__ = "scheduled_posts"
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id        = Column(String, ForeignKey("users.id"), nullable=False)
+    job_id         = Column(String, ForeignKey("jobs.id"), nullable=False)
+    clip_filename  = Column(String, nullable=False)
+    platform       = Column(String, nullable=False)   # youtube / tiktok / instagram / facebook
+    title          = Column(String, default="")
+    description    = Column(Text, default="")
+    privacy_level  = Column(String, default="PUBLIC_TO_EVERYONE")  # tiktok only
+    scheduled_time = Column(DateTime, nullable=False)  # UTC
+    status         = Column(String, default="pending")  # pending/posted/failed/canceled
+    result         = Column(Text, default="")  # success payload or error message
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    posted_at      = Column(DateTime, nullable=True)
+
+
 Base.metadata.create_all(bind=engine)
 
 # ── Lightweight auto-migration: add new columns to existing tables ─
@@ -288,6 +311,11 @@ def _migrate_db():
                 conn.exec_driver_sql("ALTER TABLE users ADD COLUMN can_connect_socials BOOLEAN DEFAULT 0")
                 conn.commit()
                 print("[Migration] Added users.can_connect_socials column")
+            job_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(jobs)").fetchall()]
+            if "kind" not in job_cols:
+                conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN kind VARCHAR DEFAULT 'ai_clip'")
+                conn.commit()
+                print("[Migration] Added jobs.kind column")
     except Exception as _mig_err:
         print(f"[Migration] Skipped/failed (non-fatal): {_mig_err}")
 
@@ -937,6 +965,104 @@ def download_clip(job_id: str, filename: str,
                         filename=filename)
 
 
+# ══════════════════════════════════════════════════════════════════
+#  UPLOAD YOUR OWN EDIT  (raw, already-edited videos — bypasses AI)
+# ══════════════════════════════════════════════════════════════════
+
+_UPLOAD_SAFE_EXT = {".mp4", ".mov", ".m4v"}
+
+@app.post("/uploads")
+@limiter.limit("10/minute")
+async def upload_edit(request: Request, file: UploadFile = File(...),
+                      user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Upload a video the user already edited themselves. Stored just like an
+    AI job (same JOBS_DIR layout) so it can be posted/scheduled with the
+    exact same per-platform upload functions. Auto-expires after
+    UPLOAD_EXPIRY_HOURS or when the user's upload count exceeds the cap,
+    whichever happens first."""
+    orig_name = file.filename or "upload.mp4"
+    ext = os.path.splitext(orig_name)[1].lower()
+    if ext not in _UPLOAD_SAFE_EXT:
+        raise HTTPException(400, "Please upload a .mp4 or .mov video file")
+
+    # Enforce per-user cap: evict oldest upload(s) first to make room
+    existing = (db.query(Job)
+                .filter(Job.user_id == user.id, Job.kind == "user_upload")
+                .order_by(Job.created_at.asc()).all())
+    while len(existing) >= UPLOAD_MAX_PER_USER:
+        oldest = existing.pop(0)
+        shutil.rmtree(str(JOBS_DIR / oldest.id), ignore_errors=True)
+        db.query(ScheduledPost).filter(ScheduledPost.job_id == oldest.id,
+                                        ScheduledPost.status == "pending").update(
+            {"status": "failed", "result": "Source clip was removed (upload limit reached)."})
+        db.delete(oldest)
+    db.commit()
+
+    job = Job(user_id=user.id, status="done", kind="user_upload",
+              source_url="user_upload", clips_count=1)
+    db.add(job); db.commit(); db.refresh(job)
+
+    job_dir = JOBS_DIR / job.id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = f"edit{ext}"
+    dest = job_dir / safe_name
+
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > UPLOAD_MAX_BYTES:
+                    out.close()
+                    shutil.rmtree(str(job_dir), ignore_errors=True)
+                    db.delete(job); db.commit()
+                    raise HTTPException(400, f"File too large — max {UPLOAD_MAX_BYTES // (1024*1024)}MB")
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        shutil.rmtree(str(job_dir), ignore_errors=True)
+        db.delete(job); db.commit()
+        raise HTTPException(500, f"Upload failed: {e}")
+
+    job.clips_metadata = json.dumps([{"filename": safe_name, "original_name": orig_name}])
+    db.commit()
+    return {"job_id": job.id, "filename": safe_name,
+            "expires_at": (job.created_at + timedelta(hours=UPLOAD_EXPIRY_HOURS)).isoformat()}
+
+
+@app.get("/uploads")
+def list_uploads(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    jobs = (db.query(Job)
+            .filter(Job.user_id == user.id, Job.kind == "user_upload")
+            .order_by(Job.created_at.desc()).all())
+    out = []
+    for j in jobs:
+        d = _job_dict(j)
+        d["expires_at"] = (j.created_at + timedelta(hours=UPLOAD_EXPIRY_HOURS)).isoformat()
+        out.append(d)
+    return out
+
+
+@app.delete("/jobs/{job_id}")
+def delete_job(job_id: str, user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    shutil.rmtree(str(JOBS_DIR / job.id), ignore_errors=True)
+    db.query(ScheduledPost).filter(ScheduledPost.job_id == job.id,
+                                    ScheduledPost.status == "pending").update(
+        {"status": "failed", "result": "Source clip was deleted."})
+    db.delete(job)
+    db.commit()
+    return {"ok": True}
+
+
 def _job_dict(j: Job) -> dict:
     job_dir = JOBS_DIR / j.id
     clips = []
@@ -959,7 +1085,7 @@ def _job_dict(j: Job) -> dict:
         expires_at = (j.updated_at + timedelta(hours=48)).isoformat()
     return {"id": j.id, "status": j.status, "clips_count": j.clips_count,
             "clips_metadata": clips_meta, "settings": j.settings,
-            "log": j.log, "clips": clips, "expires_at": expires_at,
+            "kind": j.kind, "log": j.log, "clips": clips, "expires_at": expires_at,
             "created_at": j.created_at, "updated_at": j.updated_at}
 
 # ══════════════════════════════════════════════════════════════════
@@ -2196,6 +2322,150 @@ async def facebook_upload(
     return {"video_id": udata["id"], "status": "processing"}
 
 
+#  SCHEDULE A POST  (works for AI clips AND uploaded edits — any Job)
+# ══════════════════════════════════════════════════════════════════
+
+_VALID_PLATFORMS = {"youtube", "tiktok", "instagram", "facebook"}
+
+class ScheduleIn(BaseModel):
+    job_id: str
+    clip_filename: str
+    platform: str
+    title: str = ""
+    description: str = ""
+    privacy_level: str = "PUBLIC_TO_EVERYONE"
+    scheduled_time: str   # ISO8601, e.g. "2026-06-20T18:00:00Z"
+
+
+@app.post("/schedule")
+def create_scheduled_post(data: ScheduleIn,
+                          user: User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    if data.platform not in _VALID_PLATFORMS:
+        raise HTTPException(400, f"Unknown platform: {data.platform}")
+    job = db.query(Job).filter(Job.id == data.job_id, Job.user_id == user.id).first()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    clip_path = JOBS_DIR / data.job_id / data.clip_filename
+    if not clip_path.exists():
+        raise HTTPException(404, "Clip file not found")
+    sa = db.query(SocialAccount).filter(SocialAccount.user_id == user.id,
+                                        SocialAccount.platform == data.platform).first()
+    if not sa:
+        raise HTTPException(400, f"{data.platform.title()} isn't connected. Connect it first.")
+    try:
+        when = datetime.fromisoformat(data.scheduled_time.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(400, "Invalid scheduled_time — use ISO8601")
+    if when < datetime.utcnow() - timedelta(minutes=2):
+        raise HTTPException(400, "scheduled_time must be in the future")
+
+    post = ScheduledPost(user_id=user.id, job_id=data.job_id, clip_filename=data.clip_filename,
+                         platform=data.platform, title=data.title, description=data.description,
+                         privacy_level=data.privacy_level, scheduled_time=when)
+    db.add(post); db.commit(); db.refresh(post)
+    return {"id": post.id, "status": post.status, "scheduled_time": post.scheduled_time}
+
+
+@app.get("/schedule")
+def list_scheduled_posts(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    posts = (db.query(ScheduledPost).filter(ScheduledPost.user_id == user.id)
+             .order_by(ScheduledPost.scheduled_time.asc()).all())
+    return [{"id": p.id, "job_id": p.job_id, "clip_filename": p.clip_filename,
+             "platform": p.platform, "title": p.title, "description": p.description,
+             "scheduled_time": p.scheduled_time, "status": p.status, "result": p.result,
+             "created_at": p.created_at, "posted_at": p.posted_at} for p in posts]
+
+
+@app.delete("/schedule/{post_id}")
+def cancel_scheduled_post(post_id: str, user: User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    post = db.query(ScheduledPost).filter(ScheduledPost.id == post_id,
+                                          ScheduledPost.user_id == user.id).first()
+    if not post:
+        raise HTTPException(404, "Scheduled post not found")
+    if post.status != "pending":
+        raise HTTPException(400, f"Can't cancel — already {post.status}")
+    db.delete(post)
+    db.commit()
+    return {"ok": True}
+
+
+async def _scheduler_loop():
+    """Runs every 60s; fires any ScheduledPost whose time has come by calling
+    the same upload functions the manual 'Post Now' buttons use."""
+    while True:
+        await asyncio.sleep(60)
+        db = _db_session()
+        try:
+            due = (db.query(ScheduledPost)
+                   .filter(ScheduledPost.status == "pending",
+                           ScheduledPost.scheduled_time <= datetime.utcnow())
+                   .all())
+            for post in due:
+                user = db.query(User).filter(User.id == post.user_id).first()
+                if not user:
+                    post.status = "failed"; post.result = "User account not found"
+                    db.commit(); continue
+                try:
+                    if post.platform == "youtube":
+                        r = youtube_upload(post.job_id, post.clip_filename, post.title or "SDP Short",
+                                           post.description, "", current_user=user, db=db)
+                    elif post.platform == "tiktok":
+                        r = await tiktok_upload(post.job_id, post.clip_filename, post.title,
+                                                post.privacy_level, current_user=user, db=db)
+                    elif post.platform == "instagram":
+                        r = await instagram_upload(post.job_id, post.clip_filename,
+                                                    post.description or post.title,
+                                                    current_user=user, db=db)
+                    elif post.platform == "facebook":
+                        r = await facebook_upload(post.job_id, post.clip_filename, post.title,
+                                                  post.description, current_user=user, db=db)
+                    else:
+                        raise Exception(f"Unknown platform {post.platform}")
+                    post.status = "posted"
+                    post.result = json.dumps(r)
+                    post.posted_at = datetime.utcnow()
+                except HTTPException as he:
+                    post.status = "failed"
+                    post.result = str(he.detail)
+                except Exception as e:
+                    post.status = "failed"
+                    post.result = str(e)
+                db.commit()
+        except Exception as loop_err:
+            print(f"[Scheduler] loop error (non-fatal): {loop_err}")
+        finally:
+            db.close()
+
+
+async def _upload_expiry_loop():
+    """Runs hourly; deletes 'upload your own edit' files+rows once they're
+    older than UPLOAD_EXPIRY_HOURS (separate from the AI-clip 48h cleanup)."""
+    while True:
+        await asyncio.sleep(3600)
+        cutoff = datetime.utcnow() - timedelta(hours=UPLOAD_EXPIRY_HOURS)
+        db = _db_session()
+        try:
+            expired = (db.query(Job)
+                      .filter(Job.kind == "user_upload", Job.created_at < cutoff)
+                      .all())
+            for job in expired:
+                shutil.rmtree(str(JOBS_DIR / job.id), ignore_errors=True)
+                db.query(ScheduledPost).filter(ScheduledPost.job_id == job.id,
+                                                ScheduledPost.status == "pending").update(
+                    {"status": "failed", "result": "Source clip expired (24h limit)."})
+                db.delete(job)
+            if expired:
+                db.commit()
+                print(f"[Upload expiry] Removed {len(expired)} expired uploads")
+        except Exception as exp_err:
+            print(f"[Upload expiry] loop error (non-fatal): {exp_err}")
+        finally:
+            db.close()
+
+
+# ══════════════════════════════════════════════════════════════════
 #  ADMIN — YOUTUBE COOKIES UPLOAD
 # ══════════════════════════════════════════════════════════════════
 
@@ -2250,6 +2520,8 @@ def delete_cookies(user: User = Depends(get_current_user)):
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_cleanup_loop())
+    asyncio.create_task(_scheduler_loop())
+    asyncio.create_task(_upload_expiry_loop())
     # Mark any stuck "processing" jobs as failed on restart
     db = _db_session()
     try:
