@@ -1355,7 +1355,7 @@ function ClipPicker({ jobId, token, onNav }) {
                             border: sel ? `1px solid ${C.gold}` : `1px solid ${C.border}`,
                             background: sel ? "#C9A44308" : C.card,
                             transition:"all .15s" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:10 }}>
                   {/* Rank */}
                   <div style={{ color:C.dim, fontSize:13, fontWeight:700,
                                 minWidth:20, textAlign:"center",
@@ -1379,7 +1379,7 @@ function ClipPicker({ jobId, token, onNav }) {
                   )}
 
                   {/* Title + time */}
-                  <div style={{ flex:1 }}>
+                  <div style={{ flex:"1 1 220px", minWidth:0 }}>
                     <div style={{ color:C.text, fontSize:16, fontWeight:700,
                                   lineHeight:1.3, marginBottom:4,
                                   fontFamily:"'Segoe UI', Arial, sans-serif" }}>
@@ -1419,25 +1419,25 @@ function ClipPicker({ jobId, token, onNav }) {
                     ⬇️ Download
                   </button>
                 {ytConn && (
-                  <button style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                  <button style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
                           onClick={e => { e.stopPropagation(); setYtModal(clip); setYtTitle(clip.hook||""); setYtDesc(""); setYtAt("") }}>
                     ▶️ YouTube
                   </button>
                 )}
                 {ttConn && (
-                  <button style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6, border:"1px solid #333" }}
+                  <button style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 14px", flexShrink:0, border:"1px solid #333" }}
                           onClick={e => { e.stopPropagation(); setTtModal(clip); setTtTitle(clip.hook||""); setTtMsg("") }}>
                     🎵 TikTok
                   </button>
                 )}
                 {igConn && (
-                  <button style={{ ...css.btn("#833AB4", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                  <button style={{ ...css.btn("#833AB4", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
                           onClick={e => { e.stopPropagation(); setIgModal(clip); setIgCaption(clip.hook||""); setIgMsg("") }}>
                     📸 Instagram
                   </button>
                 )}
                 {fbConn && (
-                  <button style={{ ...css.btn("#1877F2", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0, marginLeft:6 }}
+                  <button style={{ ...css.btn("#1877F2", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
                           onClick={e => { e.stopPropagation(); setFbModal(clip); setFbTitle(clip.hook||""); setFbMsg("") }}>
                     👍 Facebook
                   </button>
