@@ -372,6 +372,15 @@ export default function App() {
         @keyframes sdpSpin   { from{ transform:rotate(0deg) } to{ transform:rotate(360deg) } }
         @keyframes sdpFloat  { 0%,100%{ transform:translateY(0) rotate(-12deg) }
                                50%   { transform:translateY(-24px) rotate(-9deg) } }
+        @keyframes sdpFloat2 { 0%,100%{ transform:translate(0,0) rotate(8deg) }
+                               50%   { transform:translate(30px,18px) rotate(4deg) } }
+        @keyframes sdpPulse  { 0%,100%{ opacity:0.55; transform:scale(1) }
+                               50%   { opacity:1;    transform:scale(1.18) } }
+        @keyframes sdpFlicker{ 0%,30%,100%{ opacity:0.06 } 15%{ opacity:0.22 } }
+        @keyframes sdpSweep  { 0%{ transform:translateX(0) } 100%{ transform:translateX(480px) } }
+        @keyframes sdpBokeh  { 0%,100%{ transform:translate(0,0) scale(1) }
+                               50%   { transform:translate(-18px,-32px) scale(1.18) } }
+        @keyframes sdpGrain  { 0%,100%{ opacity:0.035 } 50%{ opacity:0.065 } }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
         }
@@ -2279,15 +2288,17 @@ function TermsOfService() {
 
 
 // -- CINEMA BACKDROP (animated, behind all content) ------------------
-function CameraSvg({ size=500, colour="#D4AF5A", spinDur="26s" }) {
+function CameraSvg({ size=500, colour="#D4AF5A", glow="#41B979", spinDur="26s", uid="a" }) {
   const spinA = { transformBox:"fill-box", transformOrigin:"center",
                   animation:`sdpSpin ${spinDur} linear infinite` }
   const spinB = { ...spinA, animationDirection:"reverse" }
-  const s = { stroke:colour, strokeWidth:3, fill:"none" }
+  const gradId = `sdpCamGrad-${uid}`
+  const glowId = `sdpCamGlow-${uid}`
+  const s = { stroke:`url(#${gradId})`, strokeWidth:3, fill:"none" }
   const spokes = (cx) => (
     <>
       <circle cx={cx} cy="80" r="52" {...s}/>
-      <circle cx={cx} cy="80" r="14" {...s}/>
+      <circle cx={cx} cy="80" r="14" {...s} fill={`url(#${glowId})`}/>
       <line x1={cx} y1="28" x2={cx} y2="132" {...s}/>
       <line x1={cx-52} y1="80" x2={cx+52} y2="80" {...s}/>
       <line x1={cx-37} y1="43" x2={cx+37} y2="117" {...s}/>
@@ -2296,16 +2307,28 @@ function CameraSvg({ size=500, colour="#D4AF5A", spinDur="26s" }) {
   )
   return (
     <svg width={size} height={size*0.81} viewBox="0 0 420 340" fill="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={colour}/>
+          <stop offset="100%" stopColor={glow}/>
+        </linearGradient>
+        <radialGradient id={glowId}>
+          <stop offset="0%" stopColor={glow} stopOpacity="0.8"/>
+          <stop offset="100%" stopColor={glow} stopOpacity="0"/>
+        </radialGradient>
+      </defs>
       <g style={spinA}>{spokes(130)}</g>
       <g style={spinB}>{spokes(252)}</g>
       <rect x="80" y="138" width="240" height="116" rx="14" {...s}/>
+      <circle cx="122" cy="196" r="24" fill={`url(#${glowId})`}
+              style={{ animation:"sdpPulse 4.5s ease-in-out infinite", transformBox:"fill-box", transformOrigin:"center" }}/>
       <circle cx="122" cy="196" r="18" {...s}/>
-      <circle cx="122" cy="196" r="7"  {...s}/>
+      <circle cx="122" cy="196" r="7"  {...s} fill={glow} fillOpacity="0.55"/>
       <line x1="168" y1="170" x2="296" y2="170" {...s}/>
       <line x1="168" y1="222" x2="296" y2="222" {...s}/>
       <rect x="320" y="166" width="54" height="60" rx="8" {...s}/>
       <circle cx="396" cy="196" r="19" {...s}/>
-      <circle cx="396" cy="196" r="9"  {...s}/>
+      <circle cx="396" cy="196" r="9"  {...s} fill={colour} fillOpacity="0.45"/>
       <line x1="200" y1="254" x2="200" y2="300" {...s}/>
       <line x1="200" y1="300" x2="164" y2="336" {...s}/>
       <line x1="200" y1="300" x2="236" y2="336" {...s}/>
@@ -2313,10 +2336,27 @@ function CameraSvg({ size=500, colour="#D4AF5A", spinDur="26s" }) {
   )
 }
 
-function FilmStripSvg({ colour="#D4AF5A" }) {
-  const s = { stroke:colour, strokeWidth:2, fill:"none" }
+function FilmStripSvg({ colour="#D4AF5A", glow="#41B979", uid="a" }) {
+  const gradId = `sdpFilmGrad-${uid}`
+  const sweepId = `sdpFilmSweep-${uid}`
+  const clipId = `sdpFilmClip-${uid}`
+  const s = { stroke:`url(#${gradId})`, strokeWidth:2, fill:"none" }
   return (
     <svg width="320" height="92" viewBox="0 0 320 92" fill="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={colour}/>
+          <stop offset="100%" stopColor={glow}/>
+        </linearGradient>
+        <linearGradient id={sweepId} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0"/>
+          <stop offset="50%" stopColor="#fff" stopOpacity="0.8"/>
+          <stop offset="100%" stopColor="#fff" stopOpacity="0"/>
+        </linearGradient>
+        <clipPath id={clipId}>
+          <rect x="2" y="2" width="316" height="88" rx="8"/>
+        </clipPath>
+      </defs>
       <rect x="2" y="2" width="316" height="88" rx="8" {...s}/>
       <line x1="2" y1="26" x2="318" y2="26" {...s}/>
       <line x1="2" y1="66" x2="318" y2="66" {...s}/>
@@ -2326,6 +2366,39 @@ function FilmStripSvg({ colour="#D4AF5A" }) {
           <rect x={14 + i*38} y="73" width="16" height="10" rx="2" {...s}/>
         </g>
       ))}
+      {Array.from({ length: 7 }).map((_, i) => (
+        <rect key={`f${i}`} x={36+i*38} y="30" width="34" height="32" rx="2"
+              fill={glow}
+              style={{ animation:"sdpFlicker 2.4s steps(1) infinite", animationDelay:`${i*0.17}s` }}/>
+      ))}
+      <g clipPath={`url(#${clipId})`}>
+        <rect x="-80" y="0" width="80" height="92" fill={`url(#${sweepId})`}
+              style={{ animation:"sdpSweep 5.5s linear infinite" }}/>
+      </g>
+    </svg>
+  )
+}
+
+function Bokeh({ top, left, size=120, colour="#41B979", dur="14s", delay="0s", opacity=0.05 }) {
+  return (
+    <div style={{ position:"absolute", top, left, width:size, height:size, borderRadius:"50%",
+                  background:`radial-gradient(circle, ${colour} 0%, transparent 70%)`,
+                  opacity, filter:"blur(1px)",
+                  animation:`sdpBokeh ${dur} ease-in-out infinite`, animationDelay:delay }} />
+  )
+}
+
+function FilmGrainOverlay() {
+  return (
+    <svg aria-hidden="true" width="100%" height="100%"
+         style={{ position:"absolute", inset:0, mixBlendMode:"overlay",
+                  animation:"sdpGrain 0.6s steps(2) infinite" }}>
+      <filter id="sdpGrainFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise"/>
+        <feColorMatrix in="noise" type="matrix"
+          values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.4 0"/>
+      </filter>
+      <rect width="100%" height="100%" filter="url(#sdpGrainFilter)"/>
     </svg>
   )
 }
@@ -2335,18 +2408,26 @@ function CinemaBackdrop() {
     <div aria-hidden="true"
          style={{ position:"fixed", inset:0, zIndex:0, overflow:"hidden",
                   pointerEvents:"none" }}>
-      <div style={{ position:"absolute", top:"6%", right:"-150px", opacity:0.07,
+      <Bokeh top="12%" left="20%" size={150} colour="#41B979" dur="17s" delay="0s"   opacity={0.06}/>
+      <Bokeh top="70%" left="80%" size={110} colour="#D4AF5A" dur="21s" delay="2.5s" opacity={0.05}/>
+      <Bokeh top="42%" left="48%" size={70}  colour="#41B979" dur="13s" delay="5s"   opacity={0.045}/>
+      <div style={{ position:"absolute", top:"6%", right:"-150px", opacity:0.1,
                     animation:"sdpDrift 46s ease-in-out infinite" }}>
-        <CameraSvg size={540} colour="#D4AF5A" spinDur="28s" />
+        <CameraSvg size={540} colour="#D4AF5A" glow="#41B979" spinDur="28s" uid="cam1" />
       </div>
-      <div style={{ position:"absolute", bottom:"3%", left:"-170px", opacity:0.055,
+      <div style={{ position:"absolute", bottom:"3%", left:"-170px", opacity:0.085,
                     animation:"sdpDrift2 58s ease-in-out infinite" }}>
-        <CameraSvg size={430} colour="#41B979" spinDur="36s" />
+        <CameraSvg size={430} colour="#41B979" glow="#D4AF5A" spinDur="36s" uid="cam2" />
       </div>
-      <div style={{ position:"absolute", top:"56%", right:"10%", opacity:0.05,
+      <div style={{ position:"absolute", top:"56%", right:"10%", opacity:0.075,
                     animation:"sdpFloat 20s ease-in-out infinite" }}>
-        <FilmStripSvg colour="#D4AF5A" />
+        <FilmStripSvg colour="#D4AF5A" glow="#41B979" uid="film1" />
       </div>
+      <div style={{ position:"absolute", top:"20%", left:"4%", opacity:0.06,
+                    animation:"sdpFloat2 27s ease-in-out infinite" }}>
+        <FilmStripSvg colour="#41B979" glow="#D4AF5A" uid="film2" />
+      </div>
+      <FilmGrainOverlay />
     </div>
   )
 }
