@@ -7,6 +7,20 @@ import os, json, subprocess, shutil, tempfile, math
 from pathlib import Path
 from typing import Optional
 
+# Same env var name as main.py's MAX_VIDEO_DURATION_SECONDS so one Railway
+# variable controls both the pre-download check here and the post-download
+# backstop in process_job. Kept independent (not imported from main) to
+# avoid a circular import between the two modules.
+MAX_VIDEO_DURATION_SECONDS = int(os.environ.get("MAX_VIDEO_DURATION_SECONDS", 3 * 3600))
+
+
+class VideoTooLongError(RuntimeError):
+    """Raised when a source video exceeds MAX_VIDEO_DURATION_SECONDS. Kept as
+    its own type (rather than a plain RuntimeError) so main.py can catch it
+    specifically and refund the user's tokens instead of treating it like a
+    generic download failure."""
+    pass
+
 
 def _find_bin(name: str) -> str:
     """Find a binary in common locations including nix store."""
@@ -155,6 +169,30 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             except:
                 pass
             return fname
+
+    # Pre-flight: ask for metadata only (no download) so an oversized video
+    # gets rejected in ~1 second instead of after burning bandwidth/disk on
+    # a multi-GB 4K download that we'd just throw away anyway. If this probe
+    # fails for any reason (bot detection, extractor quirk, non-YouTube URL,
+    # etc.) we don't block the job — we just fall through to the real
+    # download and let the ffprobe-based check in main.py catch it instead.
+    try:
+        probe_opts = _base_opts("android", False, False)
+        probe_opts["skip_download"] = True
+        with yt_dlp.YoutubeDL(probe_opts) as ydl:
+            probe_info = ydl.extract_info(url, download=False)
+        probe_dur = (probe_info or {}).get("duration", 0) or 0
+        if probe_dur > MAX_VIDEO_DURATION_SECONDS:
+            raise VideoTooLongError(
+                f"Video is {probe_dur/60:.0f} min long — over the "
+                f"{MAX_VIDEO_DURATION_SECONDS // 60}-min limit per job. "
+                f"Try a shorter video or trim it first.")
+        if probe_dur:
+            log_fn(f"📏 Pre-flight check: {probe_dur/60:.1f} min — under the limit, continuing")
+    except VideoTooLongError:
+        raise  # the over-limit case above — stop here, don't download
+    except Exception as e:
+        log_fn(f"   (pre-flight duration check skipped: {str(e)[:120]})")
 
     # Strategy ladder — try each in order, stop on first success
     # android: no PO token needed, works for public videos, uses DASH (high quality)

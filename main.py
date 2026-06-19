@@ -139,6 +139,15 @@ META_GRAPH_VER    = "v19.0"
 
 TOKENS_PER_CLIP = 0.5   # Each clip costs half a token
 
+# Hard cap on source-video length. Without this, a multi-hour video gets
+# downloaded at up to 4K and then whisper-transcribed in dozens of 2-minute
+# chunks back-to-back with no limit — that's what was running the Railway
+# container out of memory and triggering the OOM "Killed" crashes (which
+# nuke EVERY in-flight job, not just the oversized one). 3 hours is generous
+# for the kind of source content this app targets (podcasts, streams, long
+# YouTube videos) while keeping a single job's worst-case resource use bounded.
+MAX_VIDEO_DURATION_SECONDS = int(os.getenv("MAX_VIDEO_DURATION_SECONDS", 3 * 3600))
+
 # ── "Upload your own edit" feature limits ──────────────────────────
 UPLOAD_MAX_PER_USER  = 10                 # max stored uploads per user
 UPLOAD_MAX_BYTES     = 500 * 1024 * 1024  # 500MB per file
@@ -1282,6 +1291,29 @@ def _save_clip_metadata(job_id: str, meta_list: list):
         db.close()
 
 
+def _refund_job_tokens(job_id: str, settings: dict, reason: str):
+    """Give back the tokens charged at job creation. Used when we reject a
+    job before doing any real work (e.g. video too long) so the user isn't
+    charged for something we refused to run."""
+    db = _db_session()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            return
+        user = db.query(User).filter(User.id == job.user_id).first()
+        if not user or user.email in ADMIN_EMAILS:
+            return  # admins were never charged
+        cost = round(float(settings.get("clip_count", 0)) * TOKENS_PER_CLIP, 1)
+        if cost <= 0:
+            return
+        user.tokens += cost
+        db.add(Transaction(user_id=user.id, kind="refund", provider="system",
+                            amount_usd=0, tokens=cost, ref_id=job_id))
+        db.commit()
+    finally:
+        db.close()
+
+
 def process_job(job_id: str, settings: dict):
     """
     Full processing pipeline — runs in FastAPI BackgroundTasks thread.
@@ -1300,10 +1332,18 @@ def process_job(job_id: str, settings: dict):
         # Import processor functions (inside try so failures are caught)
         from processor import (download_video, pick_clips_claude, pick_clips_evenly,
                                 build_ass_content, extract_clip,
-                                smart_reframe, blur_faces_opencv)
+                                smart_reframe, blur_faces_opencv, VideoTooLongError)
         # 1. Download video
         log(f"⬇️  Downloading: {settings['source_url']}")
-        video_path = download_video(settings["source_url"], str(tmp_dir), log)
+        try:
+            video_path = download_video(settings["source_url"], str(tmp_dir), log)
+        except VideoTooLongError as e:
+            log(f"⛔ {e}")
+            log("   Refunding tokens — no work was done on this job.")
+            _refund_job_tokens(job_id, settings, reason="video_too_long")
+            shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            _set_job_status(job_id, "failed")
+            return
         log(f"✅ Downloaded: {Path(video_path).name}")
 
         # 2. Get duration
@@ -1315,6 +1355,15 @@ def process_job(job_id: str, settings: dict):
             log(f"📹 Duration estimated: {dur:.1f}s (ffprobe couldn't read metadata)")
         else:
             log(f"📹 Duration: {dur:.1f}s ({dur/60:.1f} min)")
+
+        if dur > MAX_VIDEO_DURATION_SECONDS:
+            log(f"⛔ This video is {dur/60:.0f} min, which is over the "
+                f"{MAX_VIDEO_DURATION_SECONDS // 60}-min limit per job. "
+                f"Refunding tokens — please try a shorter source video or a trimmed clip of it.")
+            _refund_job_tokens(job_id, settings, reason="video_too_long")
+            shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            _set_job_status(job_id, "failed")
+            return
 
         # 3. Transcribe if needed (whisper optional)
         segments = []
