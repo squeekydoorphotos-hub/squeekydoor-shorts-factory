@@ -981,6 +981,25 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
     } catch(err) { alert(err.message) }
   }
 
+  const deleteJob = async (jobId, e) => {
+    e?.stopPropagation()
+    if (!confirm("Delete this job? This can't be undone.")) return
+    try {
+      await apiFetch(`/jobs/${jobId}`, {method:"DELETE"}, token)
+      fetchJobs()
+    } catch(err) { alert(err.message) }
+  }
+
+  const clearFailedJobs = async () => {
+    const failed = jobs.filter(j => j.status === "failed")
+    if (failed.length === 0) return
+    if (!confirm(`Delete ${failed.length} failed job${failed.length>1?"s":""}? This can't be undone.`)) return
+    try {
+      await Promise.all(failed.map(j => apiFetch(`/jobs/${j.id}`, {method:"DELETE"}, token)))
+      fetchJobs()
+    } catch(err) { alert(err.message) }
+  }
+
   const fetchUploads = useCallback(() => {
     apiFetch("/uploads",{},token).then(setUploads).catch(console.error)
   },[token])
@@ -1318,7 +1337,16 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
         </div>
       )}
 
-      <div style={css.sec}>Recent Jobs</div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={css.sec}>Recent Jobs</div>
+        {jobs.some(j => j.status === "failed") && (
+          <button style={{ ...css.btn(C.field, C.red), fontSize:10,
+                           padding:"4px 12px", border:`1px solid ${C.red}40` }}
+                  onClick={clearFailedJobs}>
+            🗑 Clear Failed
+          </button>
+        )}
+      </div>
       {loading ? <div style={{ color:C.dim }}>Loading…</div> :
        jobs.length === 0 ? (
         <div style={{ ...css.card, textAlign:"center", color:C.dim, padding:40 }}>
@@ -1355,6 +1383,12 @@ function Dashboard({ user, setUser, token, onNav, onViewClips }) {
                 <div style={{ color:C.dim, fontSize:11 }}>
                   {new Date(j.created_at).toLocaleDateString()}
                 </div>
+                <button title="Delete this job"
+                        style={{ ...css.btn(C.field, C.dim), fontSize:11,
+                                 padding:"4px 9px" }}
+                        onClick={e => deleteJob(j.id, e)}>
+                  🗑
+                </button>
                 <div style={{ color:C.dim, fontSize:12 }}>{selJob?.id===j.id ? "▲" : "▼"}</div>
               </div>
               {j.status === "processing" && (
