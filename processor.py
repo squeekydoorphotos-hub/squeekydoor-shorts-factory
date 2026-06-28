@@ -529,7 +529,10 @@ def smart_reframe(input_path: str, output_path: str,
         gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(25, 25))
         if len(faces):
-            fx, fy, fw, fh = faces[0]
+            # Pick the LARGEST face (closest/most prominent), not just the
+            # first one OpenCV happens to return — fixes the camera randomly
+            # snapping to a smaller background face.
+            fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
             cx_raw.append((fx + fw / 2) / scale)
         else:
             cx_raw.append(None)
@@ -587,17 +590,11 @@ def smart_reframe(input_path: str, output_path: str,
     cx_smooth = np.convolve(padded, kernel, mode="valid")[:n]
 
     # ── PASS 2: render with smoothed crop positions ───────────────
+    # Stream cropped frames straight into ffmpeg over a pipe instead of
+    # writing them to a lossy OpenCV (mp4v) intermediate file first — that
+    # intermediate had no quality control and was quietly degrading every
+    # reframed clip before the "final" high-quality encode ever ran.
     log_fn(f"   🎯 Reframe pass 2: rendering @ {OUT_W}x{OUT_H}…")
-    tmp    = input_path + "_rf_raw.mp4"
-    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"),
-                              fps, (OUT_W, OUT_H))
-    half = crop_w / 2
-    for i, frame in enumerate(frames):
-        x1 = int(max(0, min(w - crop_w, cx_smooth[i] - half)))
-        cropped = frame[:, x1:x1 + crop_w]
-        writer.write(cv2.resize(cropped, (OUT_W, OUT_H),
-                                 interpolation=cv2.INTER_LANCZOS4))
-    writer.release()
 
     ass_path = None
     vf = ["unsharp=5:5:0.6:5:5:0.0"]
@@ -609,19 +606,33 @@ def smart_reframe(input_path: str, output_path: str,
         safe = ass_path.replace("\\", "/").replace(":", "\\:")
         vf.append(f"ass='{safe}'")
 
-    cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
+    cmd = [FFMPEG, "-y",
+           "-f", "rawvideo", "-pix_fmt", "bgr24",
+           "-s", f"{OUT_W}x{OUT_H}", "-r", str(fps), "-i", "-",
+           "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-vf", ",".join(vf),
            "-c:v", "libx264", "-preset", ENC_PRESET, "-crf", ENC_CRF,
            "-c:a", "aac", "-b:a", "128k", output_path]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    try: os.remove(tmp)
-    except: pass
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    half = crop_w / 2
+    try:
+        for i, frame in enumerate(frames):
+            x1 = int(max(0, min(w - crop_w, cx_smooth[i] - half)))
+            cropped = frame[:, x1:x1 + crop_w]
+            resized = cv2.resize(cropped, (OUT_W, OUT_H),
+                                  interpolation=cv2.INTER_LANCZOS4)
+            proc.stdin.write(resized.tobytes())
+    finally:
+        try: proc.stdin.close()
+        except: pass
+    _, stderr = proc.communicate()
     if ass_path:
         try: os.remove(ass_path)
         except: pass
-    if r.returncode != 0:
-        raise RuntimeError(f"reframe: {r.stderr[-300:]}")
+    if proc.returncode != 0:
+        raise RuntimeError(f"reframe: {stderr.decode(errors='ignore')[-300:]}")
 
 
 
@@ -639,41 +650,49 @@ def blur_faces_opencv(input_path: str, output_path: str,
     H      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     kernel = max(3, int(strength * 18) | 1)
-    tmp    = input_path + "_bl_raw.mp4"
-    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
     cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
-    blurred = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret: break
-        scale = 640 / W; dh = int(H * scale)
-        small = cv2.resize(frame, (640, dh))
-        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, 1.1, 4, minSize=(20, 20))
-        if len(faces):
-            PAD = 0.15
-            for (fx, fy, fw, fh) in faces:
-                x1 = max(0, int((fx - fw*PAD) / scale))
-                y1 = max(0, int((fy - fh*PAD) / scale))
-                x2 = min(W, int((fx + fw*(1+PAD)) / scale))
-                y2 = min(H, int((fy + fh*(1+PAD)) / scale))
-                roi = frame[y1:y2, x1:x2]
-                if roi.size:
-                    frame[y1:y2, x1:x2] = cv2.GaussianBlur(roi, (kernel, kernel), 0)
-                    blurred += 1
-        writer.write(frame)
-
-    cap.release(); writer.release()
-    log_fn(f"   👁️  Blurred {blurred} face instances")
-
-    cmd = [FFMPEG, "-y", "-i", tmp, "-i", input_path,
+    # Stream blurred frames straight into ffmpeg over a pipe instead of an
+    # OpenCV (mp4v) intermediate file — same double-compression issue as
+    # smart_reframe, fixed the same way.
+    cmd = [FFMPEG, "-y",
+           "-f", "rawvideo", "-pix_fmt", "bgr24",
+           "-s", f"{W}x{H}", "-r", str(fps), "-i", "-",
+           "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET, "-crf", ENC_CRF,
            "-c:a", "aac", "-b:a", "128k", output_path]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    try: os.remove(tmp)
-    except: pass
-    if r.returncode != 0:
-        raise RuntimeError(f"blur: {r.stderr[-300:]}")
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    blurred = 0
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret: break
+            scale = 640 / W; dh = int(H * scale)
+            small = cv2.resize(frame, (640, dh))
+            gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, 1.1, 4, minSize=(20, 20))
+            if len(faces):
+                PAD = 0.15
+                for (fx, fy, fw, fh) in faces:
+                    x1 = max(0, int((fx - fw*PAD) / scale))
+                    y1 = max(0, int((fy - fh*PAD) / scale))
+                    x2 = min(W, int((fx + fw*(1+PAD)) / scale))
+                    y2 = min(H, int((fy + fh*(1+PAD)) / scale))
+                    roi = frame[y1:y2, x1:x2]
+                    if roi.size:
+                        frame[y1:y2, x1:x2] = cv2.GaussianBlur(roi, (kernel, kernel), 0)
+                        blurred += 1
+            proc.stdin.write(frame.tobytes())
+    finally:
+        try: proc.stdin.close()
+        except: pass
+
+    cap.release()
+    _, stderr = proc.communicate()
+    log_fn(f"   👁️  Blurred {blurred} face instances")
+    if proc.returncode != 0:
+        raise RuntimeError(f"blur: {stderr.decode(errors='ignore')[-300:]}")
