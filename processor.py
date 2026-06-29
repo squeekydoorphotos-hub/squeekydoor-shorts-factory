@@ -397,17 +397,21 @@ def _probe_dims(video: str):
 def _adaptive_vertical_dims(src_w: int, src_h: int):
     """
     Pick a 9:16 output size that matches what the source can actually
-    deliver, instead of always forcing 1080x1920:
-      - A 4K/1440p source now keeps its real detail (no wasted downscale).
-      - A 1080p (or smaller) source is no longer force-upscaled and blurred
-        — it crops at native height, which looks sharper on screen than an
-        upscaled-then-recompressed frame.
-      - Floored at 1080 tall / capped at 3840 tall so very low-res sources
-        still look acceptable and very high-res ones don't blow up encode time.
+    deliver:
+      - A 4K/1440p source keeps its real detail (no wasted downscale).
+      - A 1080p (or smaller) source is upscaled up to the 1080x1920
+        social-media standard so the clip isn't delivered at a tiny,
+        sub-HD width (e.g. ~608px) that looks pixelated/blocky once a
+        phone stretches it to fill the screen. This is safe now that the
+        render pipeline does a single Lanczos resize + sharpen + CRF18
+        encode with no lossy intermediate, so the upscale stays clean.
+      - Floored at 1920 tall / capped at 3840 tall so low-res sources still
+        hit the 1080x1920 standard and very high-res ones don't blow up
+        encode time.
     Returns (out_w, out_h), both even numbers, 9:16 ratio.
     """
     short_side = min(src_w, src_h) if src_w and src_h else 1080
-    h = max(1080, min(short_side, 3840))
+    h = max(1920, min(short_side, 3840))
     w = int(round((h * 9 / 16) / 2) * 2)
     h = int(round(h / 2) * 2)
     return w, h
