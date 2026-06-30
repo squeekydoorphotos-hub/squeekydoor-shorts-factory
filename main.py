@@ -1516,6 +1516,15 @@ def process_job(job_id: str, settings: dict):
                                 os.replace(p + "_rf.mp4", p)
                             except Exception as ex:
                                 log(f"  #⚠️  Reframe failed: {ex}")
+                                # Never leave a half-written temp file sitting
+                                # in the output folder — it can otherwise get
+                                # picked up and served to the user as if it
+                                # were a real, finished clip.
+                                try:
+                                    if os.path.exists(p + "_rf.mp4"):
+                                        os.remove(p + "_rf.mp4")
+                                except Exception:
+                                    pass
 
                 # Face blur pass
                 if settings.get("face_blur"):
@@ -1526,6 +1535,11 @@ def process_job(job_id: str, settings: dict):
                             os.replace(p + "_bl.mp4", p)
                         except Exception as ex:
                             log(f"   ⚠️  Blur failed: {ex}")
+                            try:
+                                if os.path.exists(p + "_bl.mp4"):
+                                    os.remove(p + "_bl.mp4")
+                            except Exception:
+                                pass
 
                 made += 1
                 log(f"  #✅ Done")

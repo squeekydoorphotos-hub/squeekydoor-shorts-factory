@@ -501,9 +501,19 @@ def smart_reframe(input_path: str, output_path: str,
     Two-pass smooth reframe:
       Pass 1 — detect face centre-x for every frame, reject outliers, fill
                gaps, Gaussian-smooth.
-      Pass 2 — render each frame using the pre-computed smooth crop position.
+      Pass 2 — RE-READ the source from disk a second time and render each
+               frame using the pre-computed smooth crop position.
     Captions (if provided) are burned in AFTER cropping, at the final
     output resolution, so their coordinate space actually matches the frame.
+
+    IMPORTANT: frames are never held in memory across passes. The old
+    version stored every decoded full-resolution frame in a Python list
+    (frames.append(frame)) so it could reuse them in pass 2 — for a 4K clip
+    that's gigabytes of raw frames, and on a memory-limited server the
+    process gets killed mid-write, leaving a truncated/corrupt output file
+    (no moov atom — unplayable, "Unknown" format in any player). Re-reading
+    the file from disk in pass 2 instead keeps memory flat regardless of
+    resolution or clip length.
     """
     import cv2
     import numpy as np
@@ -518,14 +528,18 @@ def smart_reframe(input_path: str, output_path: str,
     cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
-    # ── PASS 1: collect raw face cx per frame ─────────────────────
+    # ── PASS 1: collect raw face cx per frame. Each frame is discarded
+    #    right after detection — only the tiny per-frame number survives,
+    #    so this stays cheap on memory no matter how long/high-res the
+    #    clip is. ──────────────────────────────────────────────────────
     log_fn("   🎯 Reframe pass 1: scanning faces…")
-    cx_raw, frames = [], []
+    cx_raw = []
+    n = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        frames.append(frame)
+        n += 1
         scale = 640 / w
         small = cv2.resize(frame, (640, int(h * scale)))
         gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
@@ -540,7 +554,6 @@ def smart_reframe(input_path: str, output_path: str,
             cx_raw.append(None)
     cap.release()
 
-    n = len(frames)
     if n == 0:
         log_fn("   ⚠️  No frames to reframe")
         return
@@ -591,11 +604,9 @@ def smart_reframe(input_path: str, output_path: str,
     padded = np.pad(cx_filled, pad, mode="reflect")
     cx_smooth = np.convolve(padded, kernel, mode="valid")[:n]
 
-    # ── PASS 2: render with smoothed crop positions ───────────────
-    # Stream cropped frames straight into ffmpeg over a pipe instead of
-    # writing them to a lossy OpenCV (mp4v) intermediate file first — that
-    # intermediate had no quality control and was quietly degrading every
-    # reframed clip before the "final" high-quality encode ever ran.
+    # ── PASS 2: re-open the source from disk and render with the smoothed
+    #    crop positions, streaming straight into ffmpeg over a pipe. Never
+    #    more than one decoded frame is in memory at a time. ─────────────
     log_fn(f"   🎯 Reframe pass 2: rendering @ {OUT_W}x{OUT_H}…")
 
     ass_path = None
@@ -619,20 +630,41 @@ def smart_reframe(input_path: str, output_path: str,
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     half = crop_w / 2
+    cap2 = cv2.VideoCapture(input_path)
+    write_err = None
     try:
-        for i, frame in enumerate(frames):
+        i = 0
+        while i < n:
+            ret, frame = cap2.read()
+            if not ret:
+                break
             x1 = int(max(0, min(w - crop_w, cx_smooth[i] - half)))
             cropped = frame[:, x1:x1 + crop_w]
             resized = cv2.resize(cropped, (OUT_W, OUT_H),
                                   interpolation=cv2.INTER_LANCZOS4)
             proc.stdin.write(resized.tobytes())
+            i += 1
+    except Exception as e:
+        # Don't close stdin ourselves here — let communicate() below do it.
+        # Manually closing it first and THEN calling communicate() raises
+        # "ValueError: flush of closed file" on every run (reproduced and
+        # confirmed) and abandons the ffmpeg process without ever waiting
+        # for it, which is the actual bug behind broken/unplayable clips:
+        # the exception always fired, so Smart Reframe silently "failed"
+        # on every single job and the renamed temp file was left orphaned.
+        write_err = e
     finally:
-        try: proc.stdin.close()
-        except: pass
+        cap2.release()
+
+    # communicate() (with no manual close beforehand) safely closes stdin
+    # and drains stdout/stderr concurrently while waiting for ffmpeg to
+    # actually finish and finalize the file (write the moov atom).
     _, stderr = proc.communicate()
     if ass_path:
         try: os.remove(ass_path)
         except: pass
+    if write_err is not None:
+        raise RuntimeError(f"reframe: frame write failed: {write_err}") from write_err
     if proc.returncode != 0:
         raise RuntimeError(f"reframe: {stderr.decode(errors='ignore')[-300:]}")
 
@@ -669,6 +701,7 @@ def blur_faces_opencv(input_path: str, output_path: str,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     blurred = 0
+    write_err = None
     try:
         while True:
             ret, frame = cap.read()
@@ -689,12 +722,18 @@ def blur_faces_opencv(input_path: str, output_path: str,
                         frame[y1:y2, x1:x2] = cv2.GaussianBlur(roi, (kernel, kernel), 0)
                         blurred += 1
             proc.stdin.write(frame.tobytes())
+    except Exception as e:
+        # Same fix as smart_reframe: don't close stdin ourselves and then
+        # call communicate() — that raises "ValueError: flush of closed
+        # file" on every run and abandons the ffmpeg process without
+        # waiting for it, which silently broke this feature the same way.
+        write_err = e
     finally:
-        try: proc.stdin.close()
-        except: pass
+        cap.release()
 
-    cap.release()
     _, stderr = proc.communicate()
     log_fn(f"   👁️  Blurred {blurred} face instances")
+    if write_err is not None:
+        raise RuntimeError(f"blur: frame write failed: {write_err}") from write_err
     if proc.returncode != 0:
         raise RuntimeError(f"blur: {stderr.decode(errors='ignore')[-300:]}")
