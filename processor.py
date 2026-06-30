@@ -396,25 +396,23 @@ def _probe_dims(video: str):
 
 def _adaptive_vertical_dims(src_w: int, src_h: int):
     """
-    Pick a 9:16 output size that matches what the source can actually
-    deliver:
-      - A 4K/1440p source keeps its real detail (no wasted downscale).
-      - A 1080p (or smaller) source is upscaled up to the 1080x1920
-        social-media standard so the clip isn't delivered at a tiny,
-        sub-HD width (e.g. ~608px) that looks pixelated/blocky once a
-        phone stretches it to fill the screen. This is safe now that the
-        render pipeline does a single Lanczos resize + sharpen + CRF18
-        encode with no lossy intermediate, so the upscale stays clean.
-      - Floored at 1920 tall / capped at 3840 tall so low-res sources still
-        hit the 1080x1920 standard and very high-res ones don't blow up
-        encode time.
-    Returns (out_w, out_h), both even numbers, 9:16 ratio.
+    Pick a clean, standard 9:16 output size — always one of two fixed tiers,
+    never an odd in-between resolution like 1216x2160:
+      - 4K-class source (short side >= 2160, e.g. a real 3840x2160 download)
+        -> true 4K vertical output, 2160x3840. The crop is upscaled from its
+        native ~2160-tall slice up to 3840 tall using the same clean Lanczos
+        resize + sharpen + single-pass CRF18 encode already used below, so
+        the 4K source's extra detail is kept and used, not smashed down to
+        a smaller frame.
+      - Everything else (1080p and below) -> standard HD vertical output,
+        1080x1920, upscaled if needed so it's never delivered tiny/sub-HD
+        and pixelated on a phone screen.
+    Returns (out_w, out_h).
     """
     short_side = min(src_w, src_h) if src_w and src_h else 1080
-    h = max(1920, min(short_side, 3840))
-    w = int(round((h * 9 / 16) / 2) * 2)
-    h = int(round(h / 2) * 2)
-    return w, h
+    if short_side >= 2160:
+        return 2160, 3840
+    return 1080, 1920
 
 
 # ══════════════════════════════════════════════════════════════════
