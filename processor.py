@@ -57,7 +57,7 @@ FFPROBE = _find_bin("ffprobe")
 
 # Shared high-quality encode settings (was crf 22 / preset fast everywhere —
 # bumped for noticeably crisper output at a modest time cost).
-ENC_CRF    = "18"
+ENC_CRF    = "16"
 ENC_PRESET = "medium"
 
 
