@@ -412,6 +412,18 @@ export default function App() {
         @keyframes sdpBokeh  { 0%,100%{ transform:translate(0,0) scale(1) }
                                50%   { transform:translate(-18px,-32px) scale(1.18) } }
         @keyframes sdpGrain  { 0%,100%{ opacity:0.035 } 50%{ opacity:0.065 } }
+        @keyframes sdpNeonPulse {
+          0%,100% { text-shadow: 0 0 4px #41B979, 0 0 10px #41B979, 0 0 22px #2FE0B0, 0 0 40px #2FE0B0; }
+          50%     { text-shadow: 0 0 2px #41B979, 0 0 5px  #41B979, 0 0 12px #2FE0B0, 0 0 22px #2FE0B0; }
+        }
+        @keyframes sdpLogoDrift {
+          0%,100% { transform:translate(0,0) rotate(-2deg); }
+          50%     { transform:translate(24px,-18px) rotate(2deg); }
+        }
+        @keyframes sdpLogoDrift2 {
+          0%,100% { transform:translate(0,0) rotate(3deg); }
+          50%     { transform:translate(-20px,16px) rotate(-3deg); }
+        }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
         }
@@ -2378,20 +2390,25 @@ function TermsOfService() {
 
 // -- CINEMA BACKDROP (animated, behind all content) ------------------
 function CameraSvg({ size=500, colour="#D4AF5A", glow="#41B979", spinDur="26s", uid="a" }) {
+  // A recognizable vintage cinema-camera silhouette: boxy body, front lens
+  // barrel with concentric glass rings, a viewfinder box, a top carry
+  // handle, and two spinning film reels up top (the classic "movie camera"
+  // shape) instead of the old design where two giant reels WERE the icon
+  // and the camera body was an afterthought.
   const spinA = { transformBox:"fill-box", transformOrigin:"center",
                   animation:`sdpSpin ${spinDur} linear infinite` }
   const spinB = { ...spinA, animationDirection:"reverse" }
   const gradId = `sdpCamGrad-${uid}`
   const glowId = `sdpCamGlow-${uid}`
   const s = { stroke:`url(#${gradId})`, strokeWidth:3, fill:"none" }
-  const spokes = (cx) => (
+  const reel = (cx, cy, r) => (
     <>
-      <circle cx={cx} cy="80" r="52" {...s}/>
-      <circle cx={cx} cy="80" r="14" {...s} fill={`url(#${glowId})`}/>
-      <line x1={cx} y1="28" x2={cx} y2="132" {...s}/>
-      <line x1={cx-52} y1="80" x2={cx+52} y2="80" {...s}/>
-      <line x1={cx-37} y1="43" x2={cx+37} y2="117" {...s}/>
-      <line x1={cx+37} y1="43" x2={cx-37} y2="117" {...s}/>
+      <circle cx={cx} cy={cy} r={r} {...s}/>
+      <circle cx={cx} cy={cy} r={r*0.28} {...s} fill={`url(#${glowId})`}/>
+      <line x1={cx} y1={cy-r} x2={cx} y2={cy+r} {...s}/>
+      <line x1={cx-r} y1={cy} x2={cx+r} y2={cy} {...s}/>
+      <line x1={cx-r*0.7} y1={cy-r*0.7} x2={cx+r*0.7} y2={cy+r*0.7} {...s}/>
+      <line x1={cx+r*0.7} y1={cy-r*0.7} x2={cx-r*0.7} y2={cy+r*0.7} {...s}/>
     </>
   )
   return (
@@ -2406,21 +2423,93 @@ function CameraSvg({ size=500, colour="#D4AF5A", glow="#41B979", spinDur="26s", 
           <stop offset="100%" stopColor={glow} stopOpacity="0"/>
         </radialGradient>
       </defs>
-      <g style={spinA}>{spokes(130)}</g>
-      <g style={spinB}>{spokes(252)}</g>
-      <rect x="80" y="138" width="240" height="116" rx="14" {...s}/>
-      <circle cx="122" cy="196" r="24" fill={`url(#${glowId})`}
+
+      {/* Top reels -- smaller accents, not the main shape */}
+      <g style={spinA}>{reel(150, 54, 34)}</g>
+      <g style={spinB}>{reel(246, 54, 34)}</g>
+      <line x1="150" y1="88" x2="150" y2="128" {...s}/>
+      <line x1="246" y1="88" x2="246" y2="128" {...s}/>
+
+      {/* Main body -- the dominant, recognizable shape */}
+      <rect x="86" y="128" width="248" height="128" rx="10" {...s}/>
+      <rect x="86" y="128" width="248" height="20" rx="6" {...s} fill={colour} fillOpacity="0.10"/>
+
+      {/* Handle on top of the body */}
+      <path d="M158 128 L158 104 Q158 96 168 96 L228 96 Q238 96 238 104 L238 128"
+            {...s}/>
+
+      {/* Lens barrel, front-left -- concentric rings for glass depth */}
+      <circle cx="150" cy="196" r="46" fill={`url(#${glowId})`}
               style={{ animation:"sdpPulse 4.5s ease-in-out infinite", transformBox:"fill-box", transformOrigin:"center" }}/>
-      <circle cx="122" cy="196" r="18" {...s}/>
-      <circle cx="122" cy="196" r="7"  {...s} fill={glow} fillOpacity="0.55"/>
-      <line x1="168" y1="170" x2="296" y2="170" {...s}/>
-      <line x1="168" y1="222" x2="296" y2="222" {...s}/>
-      <rect x="320" y="166" width="54" height="60" rx="8" {...s}/>
-      <circle cx="396" cy="196" r="19" {...s}/>
-      <circle cx="396" cy="196" r="9"  {...s} fill={colour} fillOpacity="0.45"/>
-      <line x1="200" y1="254" x2="200" y2="300" {...s}/>
-      <line x1="200" y1="300" x2="164" y2="336" {...s}/>
-      <line x1="200" y1="300" x2="236" y2="336" {...s}/>
+      <circle cx="150" cy="196" r="40" {...s}/>
+      <circle cx="150" cy="196" r="28" {...s}/>
+      <circle cx="150" cy="196" r="14" {...s} fill={glow} fillOpacity="0.5"/>
+
+      {/* Viewfinder box, right side */}
+      <rect x="238" y="150" width="66" height="46" rx="6" {...s}/>
+      <circle cx="271" cy="173" r="12" {...s} fill={colour} fillOpacity="0.35"/>
+
+      {/* Side vents / detailing */}
+      <line x1="214" y1="216" x2="322" y2="216" {...s}/>
+      <line x1="214" y1="234" x2="322" y2="234" {...s}/>
+
+      {/* Rear eyepiece nub */}
+      <rect x="320" y="188" width="20" height="16" rx="4" {...s}/>
+
+      {/* Tripod legs */}
+      <line x1="210" y1="256" x2="210" y2="288" {...s}/>
+      <line x1="210" y1="288" x2="174" y2="330" {...s}/>
+      <line x1="210" y1="288" x2="246" y2="330" {...s}/>
+      <line x1="210" y1="288" x2="210" y2="332" {...s}/>
+    </svg>
+  )
+}
+
+function PhotoCameraSvg({ size=380, colour="#D4AF5A", glow="#41B979", uid="a" }) {
+  // A still/DSLR-style camera -- distinct silhouette from the cinema
+  // camera above: rounded body, pentaprism hump, big front lens, grip
+  // bump, flash and shutter button for recognizable detail.
+  const gradId = `sdpPhotoGrad-${uid}`
+  const glowId = `sdpPhotoGlow-${uid}`
+  const s = { stroke:`url(#${gradId})`, strokeWidth:3, fill:"none" }
+  return (
+    <svg width={size} height={size*0.72} viewBox="0 0 380 274" fill="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={colour}/>
+          <stop offset="100%" stopColor={glow}/>
+        </linearGradient>
+        <radialGradient id={glowId}>
+          <stop offset="0%" stopColor={glow} stopOpacity="0.85"/>
+          <stop offset="100%" stopColor={glow} stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+
+      {/* Body */}
+      <rect x="40" y="90" width="280" height="150" rx="18" {...s}/>
+      {/* Grip bump, right side */}
+      <path d="M280 90 Q320 90 320 120 L320 200 Q320 232 288 240 L280 240 Z" {...s}/>
+      {/* Pentaprism hump on top */}
+      <path d="M140 90 L160 56 Q164 50 172 50 L228 50 Q236 50 240 56 L260 90 Z" {...s}/>
+      {/* Hot-shoe nub */}
+      <rect x="188" y="38" width="24" height="14" rx="3" {...s}/>
+
+      {/* Lens barrel -- concentric rings + glow like a real glass element */}
+      <circle cx="150" cy="168" r="58" fill={`url(#${glowId})`}
+              style={{ animation:"sdpPulse 5s ease-in-out infinite", transformBox:"fill-box", transformOrigin:"center" }}/>
+      <circle cx="150" cy="168" r="52" {...s}/>
+      <circle cx="150" cy="168" r="38" {...s}/>
+      <circle cx="150" cy="168" r="24" {...s}/>
+      <circle cx="150" cy="168" r="10" {...s} fill={glow} fillOpacity="0.55"/>
+
+      {/* Small flash / AF-assist lamp */}
+      <rect x="252" y="112" width="26" height="18" rx="4" {...s}/>
+
+      {/* Shutter button */}
+      <circle cx="278" cy="78" r="9" {...s} fill={colour} fillOpacity="0.4"/>
+
+      {/* Strap lug */}
+      <circle cx="56" cy="104" r="7" {...s}/>
     </svg>
   )
 }
@@ -2492,6 +2581,32 @@ function FilmGrainOverlay() {
   )
 }
 
+function FloatingLogo({ size=170, opacity=0.14, animName="sdpFloat", animDur="24s" }) {
+  // A code-drawn recreation of the SDP neon sign logo (no raster file
+  // needed -- transparent background by construction, and the neon
+  // glow is a real animated CSS effect, not a static image, so it
+  // genuinely "lights up" rather than just sitting there).
+  const neonGlow = {
+    color: "#EAF6F3",
+    WebkitTextStroke: "1.5px #16211D",
+    animation: "sdpNeonPulse 3.2s ease-in-out infinite",
+  }
+  return (
+    <div style={{ width:size, textAlign:"center", filter:`opacity(${opacity})` }}>
+      <div style={{ fontFamily:"'Georgia',serif", fontWeight:900, fontSize:size*0.62,
+                    lineHeight:1, letterSpacing:-2, ...neonGlow }}>
+        SDP
+      </div>
+      <div style={{ fontFamily:"Arial,sans-serif", fontWeight:700, fontSize:size*0.1,
+                    letterSpacing:2, color:"#EAF6F3", marginTop:size*0.03,
+                    WebkitTextStroke:"0.5px #16211D",
+                    animation:"sdpNeonPulse 3.2s ease-in-out infinite" }}>
+        SQUEEKY DOOR
+      </div>
+    </div>
+  )
+}
+
 function CinemaBackdrop() {
   return (
     <div aria-hidden="true"
@@ -2515,6 +2630,27 @@ function CinemaBackdrop() {
       <div style={{ position:"absolute", top:"20%", left:"4%", opacity:0.06,
                     animation:"sdpFloat2 27s ease-in-out infinite" }}>
         <FilmStripSvg colour="#41B979" glow="#D4AF5A" uid="film2" />
+      </div>
+      <div style={{ position:"absolute", top:"66%", left:"18%", opacity:0.09,
+                    animation:"sdpFloat 31s ease-in-out infinite" }}>
+        <PhotoCameraSvg size={330} colour="#41B979" glow="#D4AF5A" uid="photo1" />
+      </div>
+      <div style={{ position:"absolute", top:"8%", left:"46%", opacity:0.075,
+                    animation:"sdpFloat2 24s ease-in-out infinite" }}>
+        <PhotoCameraSvg size={260} colour="#D4AF5A" glow="#41B979" uid="photo2" />
+      </div>
+      {/* Floating SDP logos, drifting slowly with an animated neon glow */}
+      <div style={{ position:"absolute", top:"14%", right:"22%",
+                    animation:"sdpLogoDrift 32s ease-in-out infinite" }}>
+        <FloatingLogo size={150} opacity={0.16} />
+      </div>
+      <div style={{ position:"absolute", bottom:"10%", right:"6%",
+                    animation:"sdpLogoDrift2 40s ease-in-out infinite" }}>
+        <FloatingLogo size={190} opacity={0.13} />
+      </div>
+      <div style={{ position:"absolute", bottom:"22%", left:"8%",
+                    animation:"sdpLogoDrift 36s ease-in-out infinite" }}>
+        <FloatingLogo size={120} opacity={0.12} />
       </div>
       <FilmGrainOverlay />
     </div>
