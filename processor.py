@@ -594,6 +594,43 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
     return created
 
 
+def generate_thumbnail(video_path: str, thumb_path: str, log_fn=lambda m: None) -> bool:
+    """
+    Grab one representative frame from a finished clip and save it as a
+    small JPG for the results-page grid (thumbnail card view). Pulled from
+    ~15% into the clip rather than frame 0 — the very first frame is
+    disproportionately likely to be a black/transition frame, which makes
+    for a useless-looking blank thumbnail card. Returns True on success;
+    failures are non-fatal (results page just falls back to no image),
+    logged but never raise, since a missing thumbnail should never break
+    an otherwise-successful clip.
+    """
+    try:
+        dur = 0.0
+        try:
+            r = subprocess.run(
+                [FFPROBE, "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", video_path],
+                capture_output=True, text=True, timeout=15
+            )
+            dur = float(r.stdout.strip() or 0)
+        except Exception:
+            pass
+        offset = max(0.1, min(dur * 0.15, dur - 0.1)) if dur > 0.2 else 0.1
+
+        cmd = [FFMPEG, "-y", "-ss", str(offset), "-i", video_path,
+               "-frames:v", "1", "-vf", "scale=480:-2",
+               "-q:v", "4", thumb_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(thumb_path):
+            log_fn(f"   ⚠️  Thumbnail generation failed: {r.stderr[-200:]}")
+            return False
+        return True
+    except Exception as e:
+        log_fn(f"   ⚠️  Thumbnail generation error: {e}")
+        return False
+
+
 # ══════════════════════════════════════════════════════════════════
 #  SMART REFRAME
 # ══════════════════════════════════════════════════════════════════

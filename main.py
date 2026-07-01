@@ -974,6 +974,27 @@ def download_clip(job_id: str, filename: str,
                         filename=filename)
 
 
+@app.get("/jobs/{job_id}/thumbnail/{filename}")
+def download_thumbnail(job_id: str, filename: str,
+                       user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Serve a clip's thumbnail JPG. `filename` is the thumbnail's own
+    filename (e.g. clip_01_hook_thumb.jpg), same path-traversal protection
+    as download_clip since it's the same untrusted-filename shape."""
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+    if not job: raise HTTPException(404)
+    path = JOBS_DIR / job_id / filename
+    try:
+        base = (JOBS_DIR / job_id).resolve()
+        resolved = path.resolve()
+        if not str(resolved).startswith(str(base) + os.sep) and resolved != base:
+            raise HTTPException(403, "Invalid filename")
+    except HTTPException: raise
+    except Exception: raise HTTPException(400, "Invalid request")
+    if not path.exists(): raise HTTPException(404, "Thumbnail not found")
+    return FileResponse(str(path), media_type="image/jpeg", filename=filename)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  UPLOAD YOUR OWN EDIT  (raw, already-edited videos — bypasses AI)
 # ══════════════════════════════════════════════════════════════════
@@ -1088,6 +1109,14 @@ def _job_dict(j: Job) -> dict:
         stem = clip["filename"].replace(".mp4", "")
         meta = next((m for m in clips_meta if m.get("filename","") == clip["filename"]), {})
         clip.update(meta)
+        # Thumbnail URL, if one was generated for this clip (older clips
+        # made before thumbnails existed just won't have one -- frontend
+        # falls back to a placeholder in that case).
+        thumb_name = clip.get("thumbnail")
+        if thumb_name and (job_dir / thumb_name).exists():
+            clip["thumbnail_url"] = f"/jobs/{j.id}/thumbnail/{thumb_name}"
+        else:
+            clip["thumbnail_url"] = None
     # Calculate expiry (48h from updated_at)
     expires_at = None
     if j.updated_at and j.status == "done":
@@ -1332,7 +1361,8 @@ def process_job(job_id: str, settings: dict):
         # Import processor functions (inside try so failures are caught)
         from processor import (download_video, pick_clips_claude, pick_clips_evenly,
                                 build_ass_content, extract_clip,
-                                smart_reframe, blur_faces_opencv, VideoTooLongError)
+                                smart_reframe, blur_faces_opencv, VideoTooLongError,
+                                generate_thumbnail)
         # 1. Download video
         log(f"⬇️  Downloading: {settings['source_url']}")
         try:
@@ -1546,6 +1576,13 @@ def process_job(job_id: str, settings: dict):
                 # Save clip metadata for the picker page
                 for path in paths:
                     fname = Path(path).name
+                    thumb_name = None
+                    try:
+                        candidate = str(Path(path).with_suffix("")) + "_thumb.jpg"
+                        if generate_thumbnail(path, candidate, log_fn=log):
+                            thumb_name = Path(candidate).name
+                    except Exception as ex:
+                        log(f"   ⚠️  Thumbnail step failed for {fname}: {ex}")
                     saved_meta.append({
                         "filename": fname,
                         "score": clip.get("score", 0),
@@ -1554,6 +1591,7 @@ def process_job(job_id: str, settings: dict):
                         "start": round(s, 1),
                         "end": round(e, 1),
                         "duration": round(e - s, 1),
+                        "thumbnail": thumb_name,
                     })
                 _save_clip_metadata(job_id, saved_meta)
             except Exception as ex:
