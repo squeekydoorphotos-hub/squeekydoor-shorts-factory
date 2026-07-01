@@ -626,6 +626,14 @@ def smart_reframe(input_path: str, output_path: str,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-vf", ",".join(vf),
            "-c:v", "libx264", "-preset", ENC_PRESET, "-crf", ENC_CRF,
+           # Force standard yuv420p output. Without this, piping raw BGR
+           # frames into libx264 makes it default to a yuv444p "High 4:4:4"
+           # profile (confirmed via ffprobe) instead of the normal yuv420p
+           # every other clip uses — yuv444p isn't reliably playable on
+           # phones, many hardware decoders, or social platforms, so a
+           # reframed clip could look/behave worse than a non-reframed one
+           # even though this pass already does a clean single-encode.
+           "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "128k", output_path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -696,6 +704,9 @@ def blur_faces_opencv(input_path: str, output_path: str,
            "-i", input_path,
            "-map", "0:v:0", "-map", "1:a:0?",
            "-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET, "-crf", ENC_CRF,
+           # Same fix as smart_reframe: force yuv420p so a face-blurred clip
+           # doesn't silently end up in the less-compatible yuv444p profile.
+           "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "128k", output_path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
