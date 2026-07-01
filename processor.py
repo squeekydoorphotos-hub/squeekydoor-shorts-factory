@@ -436,6 +436,20 @@ def _probe_dims(video: str):
         return 1920, 1080  # safe fallback, matches old hardcoded assumption
 
 
+def _probe_vcodec(video: str) -> str:
+    """Return the first video stream's codec name (e.g. 'h264', 'av1', 'vp9')."""
+    try:
+        r = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name",
+             "-of", "csv=p=0", video],
+            capture_output=True, text=True, timeout=15
+        )
+        return r.stdout.strip().lower()
+    except Exception:
+        return ""
+
+
 def _adaptive_vertical_dims(src_w: int, src_h: int):
     """
     Pick a clean, standard 9:16 output size — always one of two fixed tiers,
@@ -519,18 +533,37 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
 
         if defer_to_reframe:
             # This pass only needs to hand smart_reframe an exact trim of
-            # the source — it does NOT need to be a real re-encode. Every
-            # full H.264 encode throws away some detail permanently and can
-            # never get it back; encoding here AND AGAIN in smart_reframe's
-            # final pass was double generation loss for zero reason, since
-            # nothing about this pass's video needs codec-level processing
-            # (no crop, no scale, no burned captions happen here). Stream-
-            # copying the video track makes this pass lossless — smart_reframe
-            # then does the one and only real encode, straight off the exact
-            # trimmed source, exactly like a single-pass tool would.
-            # Audio still gets normalized/re-encoded independently since
-            # -c:v copy doesn't block audio filters/re-encoding.
-            cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", output]
+            # the source. Ideally that's a lossless stream copy — every
+            # full H.264 encode throws away detail permanently, so encoding
+            # here AND AGAIN in smart_reframe's final pass was double
+            # generation loss for no reason (no crop/scale/captions happen
+            # in this pass, so there's nothing that actually needs a
+            # re-encode).
+            #
+            # BUT: smart_reframe's face-detection pass reads this file with
+            # OpenCV, and OpenCV's video reader can silently fail to decode
+            # some codecs — confirmed via testing that it reports the file
+            # as "opened" successfully but then returns ZERO frames for an
+            # AV1-encoded video. AV1 is exactly the codec YouTube serves
+            # for real 4K/1440p downloads (their high-res H.264 track
+            # tops out at 1080p), so a real 4K source would silently break
+            # Smart Reframe entirely under a naive stream-copy — it'd not
+            # crop to vertical at all. The old code accidentally dodged
+            # this because its full re-encode transcoded everything to
+            # H.264 before OpenCV ever saw it.
+            #
+            # So: copy the video track only when it's already a codec
+            # OpenCV can read (h264); otherwise transcode to H.264 at very
+            # high quality (this is a hand-off intermediate, not the
+            # delivered file, so we don't need our normal delivery bitrate
+            # here — just enough that smart_reframe's real final encode
+            # isn't starting from a second lossy generation).
+            src_vcodec = _probe_vcodec(video)
+            if src_vcodec in ("h264", "avc1"):
+                cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", output]
+            else:
+                cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12",
+                        "-c:a", "aac", "-b:a", "128k", output]
         else:
             # Bitrate target matches whatever resolution this pass actually
             # outputs: the cropped out_w/out_h when we scale+crop to vertical,
