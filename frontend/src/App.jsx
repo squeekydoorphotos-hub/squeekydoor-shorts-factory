@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
+import sdpLogoMain from "./assets/sdp_logo_main.webp"
+import sdpLogoAlt from "./assets/sdp_logo_alt.webp"
+import sdpMascotImg from "./assets/sdp_mascot.webp"
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
 const C = {
@@ -415,6 +418,10 @@ export default function App() {
         @keyframes sdpNeonPulse {
           0%,100% { text-shadow: 0 0 4px #41B979, 0 0 10px #41B979, 0 0 22px #2FE0B0, 0 0 40px #2FE0B0; }
           50%     { text-shadow: 0 0 2px #41B979, 0 0 5px  #41B979, 0 0 12px #2FE0B0, 0 0 22px #2FE0B0; }
+        }
+        @keyframes sdpImgGlowPulse {
+          0%,100% { filter: drop-shadow(0 0 8px #2FE0B0) drop-shadow(0 0 18px #2FE0B055); }
+          50%     { filter: drop-shadow(0 0 16px #2FE0B0) drop-shadow(0 0 32px #2FE0B0AA); }
         }
         @keyframes sdpLogoDrift {
           0%,100% { transform:translate(0,0) rotate(-2deg); }
@@ -2601,121 +2608,45 @@ function FilmGrainOverlay() {
   )
 }
 
-function FloatingLogo({ size=170, opacity=0.14, animName="sdpFloat", animDur="24s" }) {
-  // A code-drawn recreation of the SDP neon sign logo (no raster file
-  // needed -- transparent background by construction, and the neon
-  // glow is a real animated CSS effect, not a static image, so it
-  // genuinely "lights up" rather than just sitting there).
-  const neonGlow = {
-    color: "#EAF6F3",
-    WebkitTextStroke: "1.5px #16211D",
-    animation: "sdpNeonPulse 3.2s ease-in-out infinite",
-  }
+function FloatingLogo({ size=170, opacity=0.14, variant="main" }) {
+  // Real Grok-generated SDP neon logo artwork (background removed so it
+  // floats transparently), with an animated glow pulse layered on top via
+  // a drop-shadow filter -- the image itself is real art, the "lights up"
+  // effect is CSS animating on top of it.
+  const src = variant === "alt" ? sdpLogoAlt : sdpLogoMain
   return (
-    <div style={{ width:size, textAlign:"center", filter:`opacity(${opacity})` }}>
-      <div style={{ fontFamily:"'Georgia',serif", fontWeight:900, fontSize:size*0.62,
-                    lineHeight:1, letterSpacing:-2, ...neonGlow }}>
-        SDP
-      </div>
-      <div style={{ fontFamily:"Arial,sans-serif", fontWeight:700, fontSize:size*0.1,
-                    letterSpacing:2, color:"#EAF6F3", marginTop:size*0.03,
-                    WebkitTextStroke:"0.5px #16211D",
-                    animation:"sdpNeonPulse 3.2s ease-in-out infinite" }}>
-        SQUEEKY DOOR
-      </div>
+    <div style={{ width:size, opacity }}>
+      <img src={src} alt="Squeeky Door Productions" draggable={false}
+           style={{ width:"100%", height:"auto", display:"block",
+                    animation:"sdpImgGlowPulse 3.2s ease-in-out infinite" }} />
     </div>
   )
 }
 
 function MascotSvg({ size=260, uid="a" }) {
-  // The wooden-door gangster mascot -- animated walk cycle (legs swing,
-  // body bobs with each step) and a continuously rising, drifting
-  // cigarette smoke wisp. Kept as its own distinct palette (weathered
-  // wood grays, black fedora, glowing teal eyes, white gloves) rather
-  // than forced into the camera/logo gold-green theme, since it's a
-  // character, not an icon.
-  const glowId = `sdpMascotEye-${uid}`
-  const legStyle = (delay) => ({
-    transformBox:"fill-box", transformOrigin:"top center",
-    animation:`sdpWalkLeg 0.9s ease-in-out infinite`, animationDelay:delay,
-  })
+  // Real Grok-generated mascot artwork (background removed). The
+  // character art itself is the real image now -- animation is layered
+  // on top: a walking bob on the whole figure, plus a small CSS smoke
+  // wisp overlay positioned near the cigarette so it still looks like
+  // it's smoking while it walks.
   const smokeStyle = (delay, dur) => ({
+    position:"absolute", width:6, height:6, borderRadius:"50%",
+    background:"#3AD6A8", filter:"blur(2px)",
     animation:`sdpSmokeRise ${dur} ease-out infinite`, animationDelay:delay,
-    transformBox:"fill-box", transformOrigin:"center",
   })
+  const h = size * (928/1120)
   return (
-    <svg width={size} height={size*1.05} viewBox="0 0 260 273" fill="none">
-      <defs>
-        <radialGradient id={glowId}>
-          <stop offset="0%" stopColor="#2FE0B0" stopOpacity="0.9"/>
-          <stop offset="100%" stopColor="#2FE0B0" stopOpacity="0"/>
-        </radialGradient>
-      </defs>
-
-      {/* Body bobs gently with the walk cycle */}
-      <g style={{ animation:"sdpWalkBob 0.9s ease-in-out infinite" }}>
-
-        {/* Legs -- swing opposite each other for a walking stride */}
-        <g style={legStyle("0s")}>
-          <rect x="94" y="190" width="14" height="46" rx="6" fill="#2A2E33"/>
-          <path d="M84 234 L118 234 L124 246 Q126 252 118 252 L80 252 Q72 252 76 246 Z" fill="#1B1E22"/>
-          <path d="M84 246 L124 246" stroke="#3AD6A8" strokeWidth="2"/>
-        </g>
-        <g style={legStyle("0.45s")}>
-          <rect x="140" y="190" width="14" height="46" rx="6" fill="#34383D"/>
-          <path d="M130 234 L164 234 L172 244 Q176 250 166 250 L128 250 Q120 250 124 244 Z" fill="#22262A"/>
-        </g>
-
-        {/* Door body -- wood-plank rectangle, slightly tilted like leaning-forward stride */}
-        <g transform="rotate(-4 130 120)">
-          <rect x="60" y="20" width="140" height="200" rx="8" fill="#8A8F95" stroke="#1B1E22" strokeWidth="4"/>
-          <rect x="60" y="20" width="140" height="200" rx="8" fill="none" stroke="#5E6368" strokeWidth="1"/>
-          {/* plank lines */}
-          {[0,1,2,3].map(i => (
-            <line key={i} x1={60+28*(i+1)} y1="24" x2={60+28*(i+1)} y2="216" stroke="#6E7378" strokeWidth="2" />
-          ))}
-          {/* hinges */}
-          <rect x="52" y="52" width="14" height="20" rx="3" fill="#C7CBCF" stroke="#1B1E22" strokeWidth="2"/>
-          <rect x="52" y="150" width="14" height="20" rx="3" fill="#C7CBCF" stroke="#1B1E22" strokeWidth="2"/>
-
-          {/* Fedora hat */}
-          <path d="M92 44 Q96 14 138 14 Q182 14 186 44 Q186 50 178 50 L100 50 Q92 50 92 44 Z" fill="#15171A"/>
-          <ellipse cx="139" cy="50" rx="58" ry="9" fill="#0E0F11"/>
-
-          {/* Glowing angry eyes */}
-          <circle cx="118" cy="76" r="15" fill={`url(#${glowId})`}/>
-          <circle cx="160" cy="76" r="15" fill={`url(#${glowId})`}/>
-          <path d="M104 68 L130 74" stroke="#1B1E22" strokeWidth="6" strokeLinecap="round"/>
-          <path d="M174 68 L148 74" stroke="#1B1E22" strokeWidth="6" strokeLinecap="round"/>
-          <ellipse cx="118" cy="78" rx="7" ry="5" fill="#3AD6A8"/>
-          <ellipse cx="160" cy="78" rx="7" ry="5" fill="#3AD6A8"/>
-
-          {/* Mustache */}
-          <path d="M110 100 Q139 112 168 100 Q139 118 110 100 Z" fill="#DCDEDF"/>
-
-          {/* Cigarette */}
-          <rect x="164" y="102" width="26" height="6" rx="2" fill="#E8E4D8"/>
-          <rect x="184" y="102" width="6" height="6" fill="#C0432E"/>
-
-          {/* Smoke wisps -- rise + drift + fade, staggered */}
-          <path d="M190 100 Q198 88 190 78 Q182 68 190 56" stroke="#3AD6A8" strokeWidth="3"
-                strokeLinecap="round" fill="none" opacity="0.7" style={smokeStyle("0s","2.6s")}/>
-          <path d="M190 100 Q200 90 192 80 Q184 70 194 58" stroke="#3AD6A8" strokeWidth="2.4"
-                strokeLinecap="round" fill="none" opacity="0.55" style={smokeStyle("0.9s","2.6s")}/>
-          <path d="M190 100 Q196 86 188 76 Q180 66 188 54" stroke="#3AD6A8" strokeWidth="2"
-                strokeLinecap="round" fill="none" opacity="0.4" style={smokeStyle("1.7s","2.6s")}/>
-
-          {/* Crossed gloved arms */}
-          <path d="M64 140 Q40 148 44 168 Q46 180 62 178 L106 168 L100 148 Z" fill="#E9E9E9" stroke="#B9BBBC" strokeWidth="2"/>
-          <path d="M196 140 Q222 146 220 166 Q218 180 200 176 L156 166 L162 146 Z" fill="#E9E9E9" stroke="#B9BBBC" strokeWidth="2"/>
-
-          {/* Door "SDP" plate, low on the body */}
-          <rect x="120" y="186" width="38" height="16" rx="3" fill="#2A2E33"/>
-          <text x="139" y="198" textAnchor="middle" fontSize="10" fontWeight="900"
-                fontFamily="Arial,sans-serif" fill="#3AD6A8">SDP</text>
-        </g>
-      </g>
-    </svg>
+    <div style={{ width:size, height:h, position:"relative",
+                  animation:"sdpWalkBob 0.9s ease-in-out infinite" }}>
+      <img src={sdpMascotImg} alt="SDP mascot" draggable={false}
+           style={{ width:"100%", height:"100%", display:"block", objectFit:"contain" }} />
+      {/* Smoke wisps rising from the cigarette, positioned relative to the art */}
+      <div style={{ position:"absolute", left:"64%", top:"40%" }}>
+        <div style={smokeStyle("0s","2.6s")}/>
+        <div style={smokeStyle("0.9s","2.6s")}/>
+        <div style={smokeStyle("1.7s","2.6s")}/>
+      </div>
+    </div>
   )
 }
 
@@ -2758,7 +2689,7 @@ function CinemaBackdrop() {
       </div>
       <div style={{ position:"absolute", bottom:"10%", right:"6%",
                     animation:"sdpLogoDrift2 40s ease-in-out infinite" }}>
-        <FloatingLogo size={190} opacity={0.13} />
+        <FloatingLogo size={190} opacity={0.13} variant="alt" />
       </div>
       <div style={{ position:"absolute", bottom:"22%", left:"8%",
                     animation:"sdpLogoDrift 36s ease-in-out infinite" }}>
