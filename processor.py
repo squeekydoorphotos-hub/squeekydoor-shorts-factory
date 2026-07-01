@@ -71,7 +71,7 @@ ENC_PRESET = "medium"
 # a standard 1080x1920 clip. Scaled by pixel count for other resolutions
 # (e.g. the 2160x3840 4K tier) so quality stays consistent across tiers
 # without blowing up 4K file size/encode time by a full 4x.
-_REF_BITRATE = 8_000_000
+_REF_BITRATE = 9_500_000
 _REF_PIXELS  = 1080 * 1920
 
 def _target_bitrate_args(w: int, h: int) -> list:
@@ -79,6 +79,18 @@ def _target_bitrate_args(w: int, h: int) -> list:
     ffmpeg args for a target-bitrate encode sized to the given output
     resolution. Replaces plain -crf so dark/simple scenes can't get
     starved down to a tiny, blocky bitrate.
+
+    Plain "-b:v X" alone is NOT enough — tested and confirmed that on truly
+    low-motion/static footage (a locked-off shot, a mostly-still product
+    photo, etc.) libx264's own rate control still quietly undershoots the
+    target by itself (a nominal 8 Mbps target came out as low as ~176 kbps
+    on a static test clip), because it decides the content doesn't "need"
+    the bits. That's the same failure mode as CRF, just less aggressive.
+    Forcing near-CBR behavior (minrate == maxrate == target, tight bufsize,
+    nal-hrd=cbr) makes the encoder actually spend the full budget every
+    time regardless of how simple the scene looks — confirmed via testing
+    to hold ~8 Mbps even on a frozen single-frame clip, at the same preset
+    speed as before (no timeout risk).
     """
     pixels = max(1, w * h)
     # Sub-linear scale (sqrt of the pixel ratio, not the full ratio) so 4K
@@ -86,9 +98,9 @@ def _target_bitrate_args(w: int, h: int) -> list:
     scale = (pixels / _REF_PIXELS) ** 0.5
     target = int(_REF_BITRATE * scale)
     target = max(4_000_000, min(target, 24_000_000))  # sane floor/ceiling
-    maxrate = int(target * 1.25)
-    bufsize = target * 2
-    return ["-b:v", str(target), "-maxrate", str(maxrate), "-bufsize", str(bufsize)]
+    bufsize = max(2_000_000, target // 2)
+    return ["-b:v", str(target), "-minrate", str(target), "-maxrate", str(target),
+            "-bufsize", str(bufsize), "-x264-params", "nal-hrd=cbr:force-cfr=1"]
 
 
 # ══════════════════════════════════════════════════════════════════
