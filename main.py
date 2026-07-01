@@ -663,7 +663,7 @@ def register(request: Request, data: RegisterIn, response: Response, db: Session
     try: send_verification_email(data.email, verify_tok)
     except: pass
     tok = create_jwt(user.id)
-    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="lax", max_age=2*24*3600)
+    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="none", max_age=2*24*3600)
     return {"token": tok, "tokens": user.tokens, "plan": user.plan,
             "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
             "email_verified": user.email_verified, "can_connect_socials": user.can_connect_socials}
@@ -676,7 +676,7 @@ def login(request: Request, data: LoginIn, response: Response, db: Session = Dep
     if not user or not verify_pw(data.password, user.hashed_pw):
         raise HTTPException(401, "Invalid email or password")
     tok = create_jwt(user.id)
-    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="lax", max_age=2*24*3600)
+    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="none", max_age=2*24*3600)
     return {"token": tok, "tokens": user.tokens, "plan": user.plan,
             "email": user.email, "is_admin": user.email in ADMIN_EMAILS,
             "email_verified": user.email_verified, "can_connect_socials": user.can_connect_socials}
@@ -692,7 +692,7 @@ def me(response: Response, user: User = Depends(get_current_user)):
             nf = user.last_free_job_at + timedelta(days=7)
             next_free = nf.isoformat()
     tok = create_jwt(user.id)
-    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="lax", max_age=2*24*3600)
+    response.set_cookie("sdp_token", tok, httponly=True, secure=True, samesite="none", max_age=2*24*3600)
     return {"id": user.id, "email": user.email, "tokens": user.tokens,
             "plan": user.plan, "created_at": user.created_at,
             "next_free_job_at": next_free,
@@ -703,7 +703,10 @@ def me(response: Response, user: User = Depends(get_current_user)):
 
 @app.post("/auth/logout")
 def logout(response: Response):
-    response.delete_cookie("sdp_token")
+    # Must match the attributes the cookie was actually set with (secure,
+    # samesite=none) or some browsers won't recognize this as the same
+    # cookie and silently no-op the deletion, leaving the old session alive.
+    response.delete_cookie("sdp_token", secure=True, samesite="none")
     return {"ok": True}
 
 # ── Admin: manage social-connect access (main admin only) ────────
