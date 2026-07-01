@@ -666,8 +666,66 @@ def smart_reframe(input_path: str, output_path: str,
     OUT_W, OUT_H = _adaptive_vertical_dims(w, h)
     crop_w = min(w, int(h * OUT_W / OUT_H))
 
-    cascade = cv2.CascadeClassifier(
+    # Frontal cascade catches straight-on faces reliably, but this
+    # speaker (like most real talking-head footage) constantly turns to
+    # a 3/4 or side angle — frontal-only tracking loses him for long
+    # stretches when that happens, and the crop then drifts/settles on
+    # empty background (confirmed: reproduced on real footage, ~8s of a
+    # 30s clip lost the subject entirely). Profile cascade (run on the
+    # frame and its horizontal mirror, since it's only trained for one
+    # facing direction) catches the turned-head case frontal misses.
+    cascade_front = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    cascade_profile = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_profileface.xml")
+
+    def _valid_shape(fw, fh):
+        # Real faces are roughly square in aspect ratio. Patterned
+        # backgrounds (lattice curtains, grid textures) regularly trigger
+        # false-positive "faces" in these cascades that are oddly
+        # elongated — this rejects those without needing a heavier model.
+        if fh == 0:
+            return False
+        ar = fw / float(fh)
+        return 0.7 <= ar <= 1.4
+
+    def _skin_ratio(bgr_small, fx, fy, fw, fh):
+        # The decisive filter. Confirmed on real footage: a patterned
+        # curtain triggered a rock-stable false-positive "face" detection
+        # (same box, frame after frame — not a one-off, so the existing
+        # jump-outlier rejection never caught it), and because it was the
+        # LARGEST box detected each frame it won "pick the biggest face"
+        # and hijacked the crop, panning fully off the actual person for
+        # a long stretch. Its skin-tone pixel ratio measured 0.0 versus
+        # 0.47 for a real face box on the same footage — background
+        # patterns essentially never have real skin-tone color content,
+        # so this cheaply and reliably tells a real face from a textured
+        # false positive regardless of size or shape.
+        region = bgr_small[max(0, fy):fy + fh, max(0, fx):fx + fw]
+        if region.size == 0:
+            return 0.0
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+        Hc, Sc, Vc = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+        mask = ((Hc < 25) | (Hc > 165)) & (Sc > 30) & (Sc < 180) & (Vc > 50)
+        return float(mask.mean())
+
+    SKIN_MIN = 0.15
+
+    def _detect_faces(bgr_small, gray):
+        candidates = []
+        for (fx, fy, fw, fh) in cascade_front.detectMultiScale(gray, 1.1, 5, minSize=(25, 25)):
+            if _valid_shape(fw, fh) and _skin_ratio(bgr_small, fx, fy, fw, fh) >= SKIN_MIN:
+                candidates.append((fx, fy, fw, fh))
+        for (fx, fy, fw, fh) in cascade_profile.detectMultiScale(gray, 1.1, 5, minSize=(25, 25)):
+            if _valid_shape(fw, fh) and _skin_ratio(bgr_small, fx, fy, fw, fh) >= SKIN_MIN:
+                candidates.append((fx, fy, fw, fh))
+        flipped_gray = cv2.flip(gray, 1)
+        flipped_bgr = cv2.flip(bgr_small, 1)
+        gw = gray.shape[1]
+        for (fx, fy, fw, fh) in cascade_profile.detectMultiScale(flipped_gray, 1.1, 5, minSize=(25, 25)):
+            if _valid_shape(fw, fh) and _skin_ratio(flipped_bgr, fx, fy, fw, fh) >= SKIN_MIN:
+                candidates.append((gw - fx - fw, fy, fw, fh))
+        return candidates
 
     # ── PASS 1: collect raw face cx per frame. Each frame is discarded
     #    right after detection — only the tiny per-frame number survives,
@@ -684,7 +742,7 @@ def smart_reframe(input_path: str, output_path: str,
         scale = 640 / w
         small = cv2.resize(frame, (640, int(h * scale)))
         gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(25, 25))
+        faces = _detect_faces(small, gray)
         if len(faces):
             # Pick the LARGEST face (closest/most prominent), not just the
             # first one OpenCV happens to return — fixes the camera randomly
@@ -720,20 +778,37 @@ def smart_reframe(input_path: str, output_path: str,
             cleaned[i] = None
     cx_raw = cleaned
 
-    # ── Fill gaps via linear interpolation ────────────────────────
+    # ── Fill gaps ──────────────────────────────────────────────────
+    # Short gaps (a blink, a quick head turn the cascades missed for a
+    # few frames) are safe to bridge with a straight linear slide — the
+    # face almost certainly moved smoothly between the two known points.
+    # Long gaps are a different situation: they mean tracking lost the
+    # subject for a real stretch of time, and the next "known" point
+    # might itself be a false detection somewhere in the background
+    # (confirmed on real footage: a lost stretch interpolated straight
+    # into an empty doorway because the anchor on the far side of the
+    # gap wasn't trustworthy). For those, hold the last confidently
+    # tracked position instead of sliding toward a shaky anchor — a
+    # locked-off frame reads as intentional; a pan into empty
+    # background reads as broken.
     default_cx = float(w) / 2
     known = [(i, v) for i, v in enumerate(cx_raw) if v is not None]
+    LONG_GAP = int(fps * 1.5)  # gaps over 1.5s hold instead of sliding
     if not known:
         cx_filled = [default_cx] * n
     else:
         kx = [i for i, _ in known]
         ky = [v for _, v in known]
-        # Extend sentinels so every frame is covered
         if kx[0] > 0:
             kx.insert(0, 0);     ky.insert(0, ky[0])
         if kx[-1] < n - 1:
             kx.append(n - 1);    ky.append(ky[-1])
         cx_filled = list(np.interp(range(n), kx, ky))
+        for a, b in zip(range(len(kx) - 1), range(1, len(kx))):
+            i0, i1 = kx[a], kx[b]
+            if i1 - i0 > LONG_GAP:
+                for i in range(i0, i1):
+                    cx_filled[i] = ky[a]
 
     # ── Gaussian smooth across the whole timeline ─────────────────
     # smoothness 0→1 maps window 15→90 frames (higher = lazier/smoother pan)
