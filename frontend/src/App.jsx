@@ -424,6 +424,26 @@ export default function App() {
           0%,100% { transform:translate(0,0) rotate(3deg); }
           50%     { transform:translate(-20px,16px) rotate(-3deg); }
         }
+        @keyframes sdpWalkLeg {
+          0%,100% { transform:rotate(-16deg); }
+          50%     { transform:rotate(16deg); }
+        }
+        @keyframes sdpWalkBob {
+          0%,50%,100% { transform:translateY(0); }
+          25%,75%     { transform:translateY(-6px); }
+        }
+        @keyframes sdpSmokeRise {
+          0%   { transform:translate(0,0) scale(0.6); opacity:0; }
+          20%  { opacity:0.7; }
+          100% { transform:translate(14px,-46px) scale(1.6); opacity:0; }
+        }
+        @keyframes sdpMascotWalk {
+          0%   { transform:translateX(-10vw) scaleX(1); }
+          49%  { transform:translateX(60vw) scaleX(1); }
+          50%  { transform:translateX(60vw) scaleX(-1); }
+          99%  { transform:translateX(-10vw) scaleX(-1); }
+          100% { transform:translateX(-10vw) scaleX(1); }
+        }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
         }
@@ -2607,6 +2627,98 @@ function FloatingLogo({ size=170, opacity=0.14, animName="sdpFloat", animDur="24
   )
 }
 
+function MascotSvg({ size=260, uid="a" }) {
+  // The wooden-door gangster mascot -- animated walk cycle (legs swing,
+  // body bobs with each step) and a continuously rising, drifting
+  // cigarette smoke wisp. Kept as its own distinct palette (weathered
+  // wood grays, black fedora, glowing teal eyes, white gloves) rather
+  // than forced into the camera/logo gold-green theme, since it's a
+  // character, not an icon.
+  const glowId = `sdpMascotEye-${uid}`
+  const legStyle = (delay) => ({
+    transformBox:"fill-box", transformOrigin:"top center",
+    animation:`sdpWalkLeg 0.9s ease-in-out infinite`, animationDelay:delay,
+  })
+  const smokeStyle = (delay, dur) => ({
+    animation:`sdpSmokeRise ${dur} ease-out infinite`, animationDelay:delay,
+    transformBox:"fill-box", transformOrigin:"center",
+  })
+  return (
+    <svg width={size} height={size*1.05} viewBox="0 0 260 273" fill="none">
+      <defs>
+        <radialGradient id={glowId}>
+          <stop offset="0%" stopColor="#2FE0B0" stopOpacity="0.9"/>
+          <stop offset="100%" stopColor="#2FE0B0" stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+
+      {/* Body bobs gently with the walk cycle */}
+      <g style={{ animation:"sdpWalkBob 0.9s ease-in-out infinite" }}>
+
+        {/* Legs -- swing opposite each other for a walking stride */}
+        <g style={legStyle("0s")}>
+          <rect x="94" y="190" width="14" height="46" rx="6" fill="#2A2E33"/>
+          <path d="M84 234 L118 234 L124 246 Q126 252 118 252 L80 252 Q72 252 76 246 Z" fill="#1B1E22"/>
+          <path d="M84 246 L124 246" stroke="#3AD6A8" strokeWidth="2"/>
+        </g>
+        <g style={legStyle("0.45s")}>
+          <rect x="140" y="190" width="14" height="46" rx="6" fill="#34383D"/>
+          <path d="M130 234 L164 234 L172 244 Q176 250 166 250 L128 250 Q120 250 124 244 Z" fill="#22262A"/>
+        </g>
+
+        {/* Door body -- wood-plank rectangle, slightly tilted like leaning-forward stride */}
+        <g transform="rotate(-4 130 120)">
+          <rect x="60" y="20" width="140" height="200" rx="8" fill="#8A8F95" stroke="#1B1E22" strokeWidth="4"/>
+          <rect x="60" y="20" width="140" height="200" rx="8" fill="none" stroke="#5E6368" strokeWidth="1"/>
+          {/* plank lines */}
+          {[0,1,2,3].map(i => (
+            <line key={i} x1={60+28*(i+1)} y1="24" x2={60+28*(i+1)} y2="216" stroke="#6E7378" strokeWidth="2" />
+          ))}
+          {/* hinges */}
+          <rect x="52" y="52" width="14" height="20" rx="3" fill="#C7CBCF" stroke="#1B1E22" strokeWidth="2"/>
+          <rect x="52" y="150" width="14" height="20" rx="3" fill="#C7CBCF" stroke="#1B1E22" strokeWidth="2"/>
+
+          {/* Fedora hat */}
+          <path d="M92 44 Q96 14 138 14 Q182 14 186 44 Q186 50 178 50 L100 50 Q92 50 92 44 Z" fill="#15171A"/>
+          <ellipse cx="139" cy="50" rx="58" ry="9" fill="#0E0F11"/>
+
+          {/* Glowing angry eyes */}
+          <circle cx="118" cy="76" r="15" fill={`url(#${glowId})`}/>
+          <circle cx="160" cy="76" r="15" fill={`url(#${glowId})`}/>
+          <path d="M104 68 L130 74" stroke="#1B1E22" strokeWidth="6" strokeLinecap="round"/>
+          <path d="M174 68 L148 74" stroke="#1B1E22" strokeWidth="6" strokeLinecap="round"/>
+          <ellipse cx="118" cy="78" rx="7" ry="5" fill="#3AD6A8"/>
+          <ellipse cx="160" cy="78" rx="7" ry="5" fill="#3AD6A8"/>
+
+          {/* Mustache */}
+          <path d="M110 100 Q139 112 168 100 Q139 118 110 100 Z" fill="#DCDEDF"/>
+
+          {/* Cigarette */}
+          <rect x="164" y="102" width="26" height="6" rx="2" fill="#E8E4D8"/>
+          <rect x="184" y="102" width="6" height="6" fill="#C0432E"/>
+
+          {/* Smoke wisps -- rise + drift + fade, staggered */}
+          <path d="M190 100 Q198 88 190 78 Q182 68 190 56" stroke="#3AD6A8" strokeWidth="3"
+                strokeLinecap="round" fill="none" opacity="0.7" style={smokeStyle("0s","2.6s")}/>
+          <path d="M190 100 Q200 90 192 80 Q184 70 194 58" stroke="#3AD6A8" strokeWidth="2.4"
+                strokeLinecap="round" fill="none" opacity="0.55" style={smokeStyle("0.9s","2.6s")}/>
+          <path d="M190 100 Q196 86 188 76 Q180 66 188 54" stroke="#3AD6A8" strokeWidth="2"
+                strokeLinecap="round" fill="none" opacity="0.4" style={smokeStyle("1.7s","2.6s")}/>
+
+          {/* Crossed gloved arms */}
+          <path d="M64 140 Q40 148 44 168 Q46 180 62 178 L106 168 L100 148 Z" fill="#E9E9E9" stroke="#B9BBBC" strokeWidth="2"/>
+          <path d="M196 140 Q222 146 220 166 Q218 180 200 176 L156 166 L162 146 Z" fill="#E9E9E9" stroke="#B9BBBC" strokeWidth="2"/>
+
+          {/* Door "SDP" plate, low on the body */}
+          <rect x="120" y="186" width="38" height="16" rx="3" fill="#2A2E33"/>
+          <text x="139" y="198" textAnchor="middle" fontSize="10" fontWeight="900"
+                fontFamily="Arial,sans-serif" fill="#3AD6A8">SDP</text>
+        </g>
+      </g>
+    </svg>
+  )
+}
+
 function CinemaBackdrop() {
   return (
     <div aria-hidden="true"
@@ -2651,6 +2763,10 @@ function CinemaBackdrop() {
       <div style={{ position:"absolute", bottom:"22%", left:"8%",
                     animation:"sdpLogoDrift 36s ease-in-out infinite" }}>
         <FloatingLogo size={120} opacity={0.12} />
+      </div>
+      <div style={{ position:"absolute", bottom:"4%", left:"38%", opacity:0.16,
+                    animation:"sdpMascotWalk 38s linear infinite" }}>
+        <MascotSvg size={190} uid="mascot1" />
       </div>
       <FilmGrainOverlay />
     </div>
