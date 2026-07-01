@@ -501,7 +501,13 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
                 f"crop={out_w}:{out_h}"
             )
         # Gentle sharpen — perceptual crispness without halo artifacts.
-        vf.append("unsharp=5:5:0.6:5:5:0.0")
+        # Skipped on the deferred-to-reframe pass: smart_reframe applies its
+        # own unsharp AFTER cropping/resizing, which is the only place it
+        # actually matters. Sharpening a frame that's about to be re-cropped
+        # and re-encoded anyway just adds edge halos that get baked into a
+        # second lossy encode for no benefit.
+        if not defer_to_reframe:
+            vf.append("unsharp=5:5:0.6:5:5:0.0")
         if ass_path:
             safe = ass_path.replace("\\", "/").replace(":", "\\:")
             vf.append(f"ass='{safe}'")
@@ -511,17 +517,31 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             af.append("loudnorm=I=-16:TP=-1.5:LRA=11")
         if af: cmd += ["-af", ",".join(af)]
 
-        # Bitrate target matches whatever resolution this pass actually
-        # outputs: the cropped out_w/out_h when we scale+crop to vertical,
-        # otherwise the untouched source resolution (horizontal pass, or
-        # deferred-to-reframe pass which stays at source size for now).
-        if vert and not defer_to_reframe:
-            br_args = _target_bitrate_args(out_w, out_h)
+        if defer_to_reframe:
+            # This pass only needs to hand smart_reframe an exact trim of
+            # the source — it does NOT need to be a real re-encode. Every
+            # full H.264 encode throws away some detail permanently and can
+            # never get it back; encoding here AND AGAIN in smart_reframe's
+            # final pass was double generation loss for zero reason, since
+            # nothing about this pass's video needs codec-level processing
+            # (no crop, no scale, no burned captions happen here). Stream-
+            # copying the video track makes this pass lossless — smart_reframe
+            # then does the one and only real encode, straight off the exact
+            # trimmed source, exactly like a single-pass tool would.
+            # Audio still gets normalized/re-encoded independently since
+            # -c:v copy doesn't block audio filters/re-encoding.
+            cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", output]
         else:
-            br_args = _target_bitrate_args(src_w, src_h)
+            # Bitrate target matches whatever resolution this pass actually
+            # outputs: the cropped out_w/out_h when we scale+crop to vertical,
+            # otherwise the untouched source resolution (horizontal pass).
+            if vert:
+                br_args = _target_bitrate_args(out_w, out_h)
+            else:
+                br_args = _target_bitrate_args(src_w, src_h)
 
-        cmd += ["-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET,
-                *br_args, "-c:a", "aac", "-b:a", "128k", output]
+            cmd += ["-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET,
+                    *br_args, "-c:a", "aac", "-b:a", "128k", output]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if ass_path:
             try: os.remove(ass_path)
