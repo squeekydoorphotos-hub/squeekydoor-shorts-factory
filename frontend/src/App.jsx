@@ -118,6 +118,37 @@ function VideoPreview({ url, token, filename, onClose }) {
   )
 }
 
+
+function ClipThumbnail({ url, token, alt }) {
+  // Thumbnails come from an authenticated endpoint (same pattern as
+  // VideoPreview above) -- plain <img src> can't send the Authorization
+  // header, so we fetch + blob it. Falls back to a plain icon tile if
+  // there's no thumbnail yet (older clips made before this feature existed)
+  // or the fetch fails, so a missing thumbnail never breaks the card.
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [failed,  setFailed]  = useState(false)
+  useEffect(() => {
+    if (!url) { setFailed(true); return }
+    let obj = null
+    setFailed(false); setBlobUrl(null)
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error("no thumb"); return r.blob() })
+      .then(b => { obj = URL.createObjectURL(b); setBlobUrl(obj) })
+      .catch(() => setFailed(true))
+    return () => { if (obj) URL.revokeObjectURL(obj) }
+  }, [url, token])
+  if (blobUrl) {
+    return <img src={blobUrl} alt={alt} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+  }
+  return (
+    <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center",
+                  justifyContent:"center", background:"linear-gradient(160deg,#111826,#0A0F1A)",
+                  color:C.dim, fontSize:28 }}>
+      {failed ? "🎬" : "⏳"}
+    </div>
+  )
+}
+
 // ── SCHEDULE POST MODAL (reusable — Dashboard uploads + ClipPicker clips) ──
 function ScheduleModal({ jobId, filename, defaultTitle="", connected, token, onClose, onScheduled }) {
   const platformOptions = [
@@ -1577,7 +1608,7 @@ function ClipPicker({ jobId, token, onNav }) {
   }
 
   return (
-    <div style={{ maxWidth:900, margin:"0 auto", padding:"32px 24px" }}>
+    <div style={{ maxWidth:1400, margin:"0 auto", padding:"32px 24px" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
         <button style={{ ...css.btn(C.field, C.dim), fontSize:12, padding:"6px 14px" }}
@@ -1623,117 +1654,141 @@ function ClipPicker({ jobId, token, onNav }) {
         </div>
       )}
 
-      {/* Clip cards */}
+      {/* Clip cards -- thumbnail grid, Opus-style */}
       {clips.length === 0 ? (
         <div style={{ ...css.card, textAlign:"center", padding:48, color:C.dim }}>
           No clips found for this job.
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(230px, 1fr))", gap:18 }}>
           {clips.map((clip, idx) => {
             const sel = selected.has(clip.filename)
             const sc  = clip.score || 0
             const col = scoreCol(sc)
+            const durLabel = clip.duration ? `${Math.floor(clip.duration/60)}:${String(Math.round(clip.duration%60)).padStart(2,"0")}` : null
             return (
               <div key={clip.filename}
                    onClick={() => toggleSelect(clip.filename)}
-                   style={{ ...css.card, cursor:"pointer",
+                   style={{ ...css.card, cursor:"pointer", overflow:"hidden", padding:0,
                             border: sel ? `1px solid ${C.gold}` : `1px solid ${C.border}`,
                             background: sel ? "#C9A44308" : C.card,
-                            transition:"all .15s" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:10 }}>
-                  {/* Rank */}
-                  <div style={{ color:C.dim, fontSize:13, fontWeight:700,
-                                minWidth:20, textAlign:"center",
-                                fontFamily:"Arial,sans-serif" }}>
+                            transition:"all .15s", display:"flex", flexDirection:"column" }}>
+
+                {/* Thumbnail */}
+                <div style={{ position:"relative", width:"100%", aspectRatio:"9/16",
+                              background:"#000", flexShrink:0 }}>
+                  <ClipThumbnail url={clip.thumbnail_url ? `${API}${clip.thumbnail_url}` : null}
+                                 token={token} alt={clip.hook || clip.filename} />
+
+                  {/* Rank, top-left */}
+                  <div style={{ position:"absolute", top:8, left:8,
+                                background:"rgba(0,0,0,0.65)", borderRadius:4,
+                                padding:"2px 7px", fontSize:11, fontWeight:700,
+                                color:C.text, fontFamily:"Arial,sans-serif" }}>
                     #{idx + 1}
                   </div>
 
-                  {/* Score badge */}
-                  {sc > 0 && (
-                    <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0,
-                                  background:`${col}18`, border:`1px solid ${col}50`,
-                                  borderRadius:20, padding:"4px 12px" }}>
-                      <span style={{ fontSize:14 }}>{scoreIcon(sc)}</span>
-                      <span style={{ color:col, fontWeight:900, fontSize:16,
-                                     fontFamily:"Arial,sans-serif" }}>{sc}</span>
-                      {clip.tag && (
-                        <span style={{ color:col, fontSize:11, fontWeight:600,
-                                       fontFamily:"Arial,sans-serif" }}>{clip.tag}</span>
-                      )}
+                  {/* Duration, top-right */}
+                  {durLabel && (
+                    <div style={{ position:"absolute", top:8, right:8,
+                                  background:"rgba(0,0,0,0.65)", borderRadius:4,
+                                  padding:"2px 7px", fontSize:11, fontWeight:700,
+                                  color:C.text, fontFamily:"Arial,sans-serif" }}>
+                      {durLabel}
                     </div>
                   )}
 
-                  {/* Title + time */}
-                  <div style={{ flex:"1 1 220px", minWidth:0 }}>
-                    <div style={{ color:C.text, fontSize:16, fontWeight:700,
-                                  lineHeight:1.3, marginBottom:4,
-                                  fontFamily:"'Segoe UI', Arial, sans-serif" }}>
-                      {clip.hook || clip.filename.replace(".mp4","").replace(/_/g," ")}
+                  {/* Score badge, bottom-left over thumbnail */}
+                  {sc > 0 && (
+                    <div style={{ position:"absolute", bottom:8, left:8,
+                                  display:"flex", alignItems:"center", gap:4,
+                                  background:"rgba(0,0,0,0.7)", border:`1px solid ${col}70`,
+                                  borderRadius:20, padding:"3px 10px" }}>
+                      <span style={{ fontSize:12 }}>{scoreIcon(sc)}</span>
+                      <span style={{ color:col, fontWeight:900, fontSize:13,
+                                     fontFamily:"Arial,sans-serif" }}>{sc}</span>
                     </div>
-                    {clip.start !== undefined && (
-                      <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif",
-                                    marginTop:2 }}>
-                        {Math.floor(clip.start/60)}:{String(Math.round(clip.start%60)).padStart(2,"0")}
-                        {" – "}
-                        {Math.floor(clip.end/60)}:{String(Math.round(clip.end%60)).padStart(2,"0")}
-                        {" · "}
-                        {clip.duration}s
-                      </div>
-                    )}
-                    <div style={{ color:C.dim, fontSize:10, fontFamily:"Arial,sans-serif",
-                                  marginTop:2, opacity:0.6 }}>
-                      {clip.filename}
-                    </div>
-                  </div>
+                  )}
 
-                  {/* Select checkbox */}
-                  <div style={{ width:20, height:20, borderRadius:3, flexShrink:0,
-                                border:`2px solid ${sel ? C.gold : C.border}`,
-                                background: sel ? C.gold : "transparent",
+                  {/* Select checkbox, bottom-right over thumbnail */}
+                  <div style={{ position:"absolute", bottom:8, right:8,
+                                width:20, height:20, borderRadius:3, flexShrink:0,
+                                border:`2px solid ${sel ? C.gold : "rgba(255,255,255,0.5)"}`,
+                                background: sel ? C.gold : "rgba(0,0,0,0.5)",
                                 display:"flex", alignItems:"center", justifyContent:"center" }}>
                     {sel && <span style={{ color:C.dark, fontSize:13, fontWeight:900 }}>✓</span>}
                   </div>
 
-                  {/* Preview + Download */}
-                  <button style={{ ...css.btn(C.field, C.gold), fontSize:11, padding:"6px 14px", flexShrink:0, border:`1px solid ${C.gold}40` }}
-                          onClick={e => { e.stopPropagation(); setPickerPreview({url:`${API}${clip.url}`, filename:clip.filename}) }}>
+                  {/* Hover play button */}
+                  <button onClick={e => { e.stopPropagation(); setPickerPreview({url:`${API}${clip.url}`, filename:clip.filename}) }}
+                          style={{ position:"absolute", inset:0, width:"100%", height:"100%",
+                                   background:"transparent", border:"none", cursor:"pointer",
+                                   display:"flex", alignItems:"center", justifyContent:"center",
+                                   color:"rgba(255,255,255,0)", fontSize:34, transition:"all .15s" }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,0,0,0.25)"; e.currentTarget.style.color = "rgba(255,255,255,0.9)" }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0)" }}>
                     ▶
                   </button>
-                  <button style={{ ...css.btn(C.emerald, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
+                </div>
+
+                {/* Title + time + filename */}
+                <div style={{ padding:"10px 12px 6px" }}>
+                  <div style={{ color:C.text, fontSize:14, fontWeight:700,
+                                lineHeight:1.3, marginBottom:4,
+                                fontFamily:"'Segoe UI', Arial, sans-serif",
+                                display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical",
+                                overflow:"hidden" }}>
+                    {clip.hook || clip.filename.replace(".mp4","").replace(/_/g," ")}
+                  </div>
+                  {clip.tag && (
+                    <div style={{ color:col, fontSize:11, fontWeight:600, marginBottom:4,
+                                  fontFamily:"Arial,sans-serif" }}>{clip.tag}</div>
+                  )}
+                  {clip.start !== undefined && (
+                    <div style={{ color:C.dim, fontSize:11, fontFamily:"Arial,sans-serif" }}>
+                      {Math.floor(clip.start/60)}:{String(Math.round(clip.start%60)).padStart(2,"0")}
+                      {" – "}
+                      {Math.floor(clip.end/60)}:{String(Math.round(clip.end%60)).padStart(2,"0")}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action icon row */}
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6, padding:"6px 12px 12px" }}>
+                  <button title="Download" style={{ ...css.btn(C.emerald, C.dark), fontSize:11, padding:"6px 10px", flexShrink:0 }}
                           onClick={e => { e.stopPropagation(); downloadClip(clip) }}>
-                    ⬇️ Download
+                    ⬇️
                   </button>
-                {ytConn && (
-                  <button style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
-                          onClick={e => { e.stopPropagation(); setYtModal(clip); setYtTitle(clip.hook||""); setYtDesc(""); setYtAt("") }}>
-                    ▶️ YouTube
-                  </button>
-                )}
-                {ttConn && (
-                  <button style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 14px", flexShrink:0, border:"1px solid #333" }}
-                          onClick={e => { e.stopPropagation(); setTtModal(clip); setTtTitle(clip.hook||""); setTtMsg("") }}>
-                    🎵 TikTok
-                  </button>
-                )}
-                {igConn && (
-                  <button style={{ ...css.btn("#833AB4", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
-                          onClick={e => { e.stopPropagation(); setIgModal(clip); setIgCaption(clip.hook||""); setIgMsg("") }}>
-                    📸 Instagram
-                  </button>
-                )}
-                {fbConn && (
-                  <button style={{ ...css.btn("#1877F2", C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
-                          onClick={e => { e.stopPropagation(); setFbModal(clip); setFbTitle(clip.hook||""); setFbMsg("") }}>
-                    👍 Facebook
-                  </button>
-                )}
-                {(ytConn || ttConn || igConn || fbConn) && (
-                  <button style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"6px 14px", flexShrink:0 }}
-                          onClick={e => { e.stopPropagation(); setScheduleModal(clip) }}>
-                    📅 Schedule
-                  </button>
-                )}
+                  {ytConn && (
+                    <button title="YouTube" style={{ ...css.btn(C.red, C.dark), fontSize:11, padding:"6px 10px", flexShrink:0 }}
+                            onClick={e => { e.stopPropagation(); setYtModal(clip); setYtTitle(clip.hook||""); setYtDesc(""); setYtAt("") }}>
+                      ▶️
+                    </button>
+                  )}
+                  {ttConn && (
+                    <button title="TikTok" style={{ ...css.btn("#010101", C.text), fontSize:11, padding:"6px 10px", flexShrink:0, border:"1px solid #333" }}
+                            onClick={e => { e.stopPropagation(); setTtModal(clip); setTtTitle(clip.hook||""); setTtMsg("") }}>
+                      🎵
+                    </button>
+                  )}
+                  {igConn && (
+                    <button title="Instagram" style={{ ...css.btn("#833AB4", C.dark), fontSize:11, padding:"6px 10px", flexShrink:0 }}
+                            onClick={e => { e.stopPropagation(); setIgModal(clip); setIgCaption(clip.hook||""); setIgMsg("") }}>
+                      📸
+                    </button>
+                  )}
+                  {fbConn && (
+                    <button title="Facebook" style={{ ...css.btn("#1877F2", C.dark), fontSize:11, padding:"6px 10px", flexShrink:0 }}
+                            onClick={e => { e.stopPropagation(); setFbModal(clip); setFbTitle(clip.hook||""); setFbMsg("") }}>
+                      👍
+                    </button>
+                  )}
+                  {(ytConn || ttConn || igConn || fbConn) && (
+                    <button title="Schedule" style={{ ...css.btn(C.gold, C.dark), fontSize:11, padding:"6px 10px", flexShrink:0 }}
+                            onClick={e => { e.stopPropagation(); setScheduleModal(clip) }}>
+                      📅
+                    </button>
+                  )}
                 </div>
               </div>
             )
