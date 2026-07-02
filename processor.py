@@ -181,7 +181,20 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             # Prefer the highest-res real source available (up to 4K) instead of
             # capping format selection — downstream encode now scales to match
             # whatever comes in, so a better source directly means a crisper clip.
-            "format":  "bestvideo[ext=mp4][height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best",
+            #
+            # NOTE: the old first choice had [ext=mp4] on the video stream.
+            # On YouTube that biases toward the AVC (avc1) encodes, which are
+            # served at noticeably lower quality-per-pixel than the VP9
+            # encodes of the same resolution, and on many videos the mp4
+            # ladder simply stops at a lower height. Resolution/quality
+            # matters more than container here — merge_output_format=mp4
+            # happily muxes VP9 into .mp4, and everything downstream decodes
+            # through ffmpeg/OpenCV which handle VP9 fine. AV1 (av01) is
+            # excluded: some OpenCV builds can't decode it, and the smart
+            # reframe pass reads frames through cv2.VideoCapture.
+            "format":  ("bestvideo[vcodec!^=av01][height<=2160]+bestaudio[ext=m4a]/"
+                        "bestvideo[vcodec!^=av01][height<=2160]+bestaudio/"
+                        "bestvideo[height<=2160]+bestaudio/best"),
             "merge_output_format": "mp4",
             "quiet": True, "no_warnings": True,
             "progress_hooks": [_hook],
@@ -236,9 +249,17 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
     except Exception as e:
         log_fn(f"   (pre-flight duration check skipped: {str(e)[:120]})")
 
-    # Strategy ladder — try each in order, stop on first success
-    # android: no PO token needed, works for public videos, uses DASH (high quality)
-    # mweb: mobile web, accepts browser cookies
+    # Strategy ladder — try each in order, stop on first GOOD success.
+    # android: no PO token needed, works for public videos — BUT without a
+    #   PO token YouTube frequently only serves it the pre-merged 360p
+    #   format (18). The old code treated any completed download as success,
+    #   so a 360p file sailed through, the 9:16 crop upscaled ~5x, and the
+    #   delivered clip looked like mush no matter how good the encoder
+    #   settings were (confirmed on a real production job: 16:9 output was
+    #   640x360). A download now only counts as success if it's >= 1080p
+    #   tall (or we've run out of strategies — a genuinely low-res source
+    #   still gets processed rather than failing the whole job).
+    # mweb: mobile web, accepts browser cookies — sees the full DASH ladder
     # tv_embedded: embedded TV client, bypasses some restrictions
     strategies = [
         ("android",     True,  False, "android + proxy"),
@@ -249,28 +270,69 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
         ("tv_embedded", False, True,  "tv_embedded no-proxy + cookies"),
     ]
 
+    MIN_GOOD_HEIGHT = 1080  # below this, keep trying other clients
+
+    def _cleanup_cookies():
+        if cookie_file:
+            try: os.remove(cookie_file)
+            except: pass
+
     last_err = None
+    best_path, best_h = None, -1   # best low-res fallback seen so far
     for client, use_proxy, use_cookies, label in strategies:
         if use_proxy and not proxy:
             continue  # skip proxy strategies if no proxy configured
         if use_cookies and not cookie_file:
             continue  # skip cookie strategies if no cookies configured
-        log_fn(f"🔄 Trying: {label}")
+        log_fn(f"\U0001F504 Trying: {label}")
         try:
             result = _attempt(_base_opts(client, use_proxy, use_cookies))
-            log_fn(f"✅ Download succeeded via {label}")
-            if cookie_file:
-                try: os.remove(cookie_file)
+            _, got_h = _probe_dims(result)
+            if got_h >= MIN_GOOD_HEIGHT:
+                log_fn(f"\u2705 Download succeeded via {label} ({got_h}p source)")
+                _cleanup_cookies()
+                return result
+            # Completed, but low-res — likely a client that only got the
+            # pre-merged 360p format. Stash it as a fallback and try the
+            # next strategy for a real high-res source. The file is moved
+            # aside so the next yt-dlp attempt (same outtmpl -> same
+            # filename) doesn't see it and skip the download entirely.
+            log_fn(f"   \u26A0\uFE0F {label} completed but only {got_h}p — "
+                   f"trying next strategy for a higher-res source")
+            if got_h > best_h:
+                keep = result + ".lowres_keep"
+                try:
+                    shutil.move(result, keep)
+                    if best_path:
+                        try: os.remove(best_path)
+                        except: pass
+                    best_path, best_h = keep, got_h
+                except Exception:
+                    pass  # if the move fails, worst case we re-download
+            else:
+                try: os.remove(result)
                 except: pass
-            return result
         except Exception as e:
             msg = str(e)
-            log_fn(f"   ✗ {label} failed: {msg[:150]}")
+            log_fn(f"   \u2717 {label} failed: {msg[:150]}")
             last_err = e
 
-    if cookie_file:
-        try: os.remove(cookie_file)
-        except: pass
+    _cleanup_cookies()
+
+    if best_path:
+        # Every strategy either failed or came back low-res — use the best
+        # low-res file rather than failing the job (the source may simply
+        # be an old low-res upload).
+        final = best_path[:-len(".lowres_keep")]
+        try:
+            shutil.move(best_path, final)
+        except Exception:
+            final = best_path
+        log_fn(f"\u26A0\uFE0F No strategy delivered >= {MIN_GOOD_HEIGHT}p — "
+               f"using best available source ({best_h}p). "
+               f"Output sharpness is limited by this source resolution.")
+        return final
+
     raise RuntimeError(f"All download strategies failed. Last error: {str(last_err)[:300]}")
 
 
