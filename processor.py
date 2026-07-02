@@ -192,9 +192,15 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
             # through ffmpeg/OpenCV which handle VP9 fine. AV1 (av01) is
             # excluded: some OpenCV builds can't decode it, and the smart
             # reframe pass reads frames through cv2.VideoCapture.
-            "format":  ("bestvideo[vcodec!^=av01][height<=2160]+bestaudio[ext=m4a]/"
-                        "bestvideo[vcodec!^=av01][height<=2160]+bestaudio/"
-                        "bestvideo[height<=2160]+bestaudio/best"),
+            # Height cap is 1440, not 2160: true-4K sources overwhelmed this
+            # server — the 4K intermediate/final encodes got OOM-killed mid
+            # render (ffmpeg died with no error, just truncated progress),
+            # failing every clip in the job. A 1440p source still gives the
+            # 9:16 crop 810x1440 real pixels for a near-lossless 1080x1920
+            # delivery, at a quarter of the decode/encode cost of 4K.
+            "format":  ("bestvideo[vcodec!^=av01][height<=1440]+bestaudio[ext=m4a]/"
+                        "bestvideo[vcodec!^=av01][height<=1440]+bestaudio/"
+                        "bestvideo[height<=1440]+bestaudio/best"),
             "merge_output_format": "mp4",
             "quiet": True, "no_warnings": True,
             "progress_hooks": [_hook],
