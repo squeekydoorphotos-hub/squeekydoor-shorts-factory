@@ -166,9 +166,15 @@ ADMIN_EMAILS = {
 MAIN_ADMIN_EMAIL = "layzphotos@gmail.com"
 
 
-JOBS_DIR  = Path(tempfile.gettempdir()) / "sdp_jobs"
+# JOBS_DIR holds the FINAL clip files users download. On Railway the
+# container filesystem is ephemeral — every deploy/restart wiped all of
+# every user's generated clips (job rows survived in the DB, so the UI
+# showed "DONE, 3 clips" but the clips page said "No clips found").
+# Set JOBS_DIR=/data/sdp_jobs (the mounted volume) in Railway variables
+# so clips survive deploys. Falls back to the old tmp path for local dev.
+JOBS_DIR  = Path(os.getenv("JOBS_DIR", str(Path(tempfile.gettempdir()) / "sdp_jobs")))
 FONTS_DIR = Path(__file__).parent / "fonts"
-JOBS_DIR.mkdir(exist_ok=True)
+JOBS_DIR.mkdir(parents=True, exist_ok=True)
 FONTS_DIR.mkdir(exist_ok=True)
 
 # Find ffmpeg/ffprobe — Railway/Nix puts them in non-standard paths
@@ -1353,9 +1359,15 @@ def process_job(job_id: str, settings: dict):
     """
     log = lambda m: _log_job(job_id, m)
     out_dir = JOBS_DIR / job_id
-    out_dir.mkdir(exist_ok=True)
-    tmp_dir = out_dir / "_tmp"
-    tmp_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Working files (the multi-GB source download, transcription chunks)
+    # deliberately stay on the ephemeral disk, NOT inside out_dir: out_dir
+    # now lives on the small persistent volume, and a single 4K source
+    # would eat most of it. tmp_dir is deleted at the end of every job
+    # anyway, and if the server restarts mid-job the ephemeral disk clears
+    # itself — nothing of value is lost.
+    tmp_dir = Path(tempfile.gettempdir()) / "sdp_jobs_tmp" / job_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     _set_job_status(job_id, "processing")
     log("🚀 Job started")
