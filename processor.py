@@ -527,9 +527,16 @@ def _adaptive_vertical_dims(src_w: int, src_h: int):
         and pixelated on a phone screen.
     Returns (out_w, out_h).
     """
-    short_side = min(src_w, src_h) if src_w and src_h else 1080
-    if short_side >= 2160:
-        return 2160, 3840
+    # Always 1080x1920 now. The 2160x3840 tier was removed after real
+    # production failures: encoding true-4K vertical (libx264 medium,
+    # ~19 Mbps near-CBR, 24 MB raw frames through the reframe pipe) is
+    # heavier than this server can reliably handle — ffmpeg got OOM-killed
+    # mid-render ("frame write failed: Broken pipe"), silently degrading
+    # clips to the center-crop fallback. A 9:16 crop of a 4K source is
+    # 1215x2160 real pixels, so DOWNSCALING it to 1080x1920 still delivers
+    # a tack-sharp true-1080p clip (this is what competitors ship, and
+    # shorts platforms re-encode to ~1080p anyway) at a quarter of the
+    # encode cost and file size.
     return 1080, 1920
 
 
@@ -576,6 +583,11 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
                 f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase:flags=lanczos,"
                 f"crop={out_w}:{out_h}"
             )
+        if not vert and (src_w > 1920 or src_h > 1080):
+            # Same reasoning as the vertical 1080p cap: a 4K 16:9 encode
+            # is unreliable on this box and pointless for delivery.
+            # Downscale to 1080p-class with Lanczos (AR preserved).
+            vf.append("scale='min(1920,iw)':-2:flags=lanczos")
         # Gentle sharpen — perceptual crispness without halo artifacts.
         # Skipped on the deferred-to-reframe pass: smart_reframe applies its
         # own unsharp AFTER cropping/resizing, which is the only place it
@@ -633,7 +645,7 @@ def extract_clip(video: str, start: float, end: float, out_path: str,
             if vert:
                 br_args = _target_bitrate_args(out_w, out_h)
             else:
-                br_args = _target_bitrate_args(src_w, src_h)
+                br_args = _target_bitrate_args(min(src_w, 1920), min(src_h, 1080))
 
             cmd += ["-c:v", "libx264", "-threads", "4", "-preset", ENC_PRESET,
                     *br_args, "-c:a", "aac", "-b:a", "128k", output]
