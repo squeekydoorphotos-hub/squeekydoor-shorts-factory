@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import sdpLogoMain from "./assets/sdp_logo_main.webp"
 import sdpLogoAlt from "./assets/sdp_logo_alt.webp"
 import sdpMascotImg from "./assets/sdp_mascot.webp"
@@ -91,13 +91,30 @@ function VideoPreview({ url, token, filename, onClose }) {
   const [blobUrl, setBlobUrl] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err,     setErr]     = useState("")
+  // Same revoked-blob fix as ClipThumbnail: never revoke the object URL
+  // that's currently rendered — only revoke when replacing it or on
+  // unmount. A token refresh re-running this effect used to kill the
+  // playing <video>'s blob URL out from under it.
+  const liveUrlRef = useRef(null)
+  useEffect(() => () => {           // unmount only
+    if (liveUrlRef.current) URL.revokeObjectURL(liveUrlRef.current)
+  }, [])
   useEffect(() => {
-    let obj = null
+    let cancelled = false
     fetch(url, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' })
       .then(r => { if (!r.ok) throw new Error("Failed to load clip"); return r.blob() })
-      .then(b => { obj = URL.createObjectURL(b); setBlobUrl(obj); setLoading(false) })
-      .catch(e => { setErr(e.message); setLoading(false) })
-    return () => { if (obj) URL.revokeObjectURL(obj) }
+      .then(b => {
+        if (cancelled) return
+        const obj = URL.createObjectURL(b)
+        setBlobUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev)
+          liveUrlRef.current = obj
+          return obj
+        })
+        setLoading(false)
+      })
+      .catch(e => { if (!cancelled) { setErr(e.message); setLoading(false) } })
+    return () => { cancelled = true }
   }, [url, token])
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -128,17 +145,39 @@ function ClipThumbnail({ url, token, alt }) {
   // header, so we fetch + blob it. Falls back to a plain icon tile if
   // there's no thumbnail yet (older clips made before this feature existed)
   // or the fetch fails, so a missing thumbnail never breaks the card.
+  //
+  // IMPORTANT lifecycle detail: the old version revoked its object URL in
+  // the effect cleanup. The `token` dep changes mid-session (the session
+  // restore/refresh flow rewrites it), and every change re-ran the effect
+  // and revoked the blob URL that was still assigned to the rendered <img>
+  // — leaving every thumbnail as a dead blob: (broken image, confirmed on
+  // production: all card imgs pointed at revoked blob URLs). Now a blob URL
+  // is only revoked when it's actually being REPLACED (or on unmount, via
+  // ref), never while it's the one on screen, and stale fetches are
+  // discarded with a cancelled flag.
   const [blobUrl, setBlobUrl] = useState(null)
   const [failed,  setFailed]  = useState(false)
+  const liveUrlRef = useRef(null)
+  useEffect(() => () => {           // unmount only
+    if (liveUrlRef.current) URL.revokeObjectURL(liveUrlRef.current)
+  }, [])
   useEffect(() => {
     if (!url) { setFailed(true); return }
-    let obj = null
-    setFailed(false); setBlobUrl(null)
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    let cancelled = false
+    setFailed(false)
+    fetch(url, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' })
       .then(r => { if (!r.ok) throw new Error("no thumb"); return r.blob() })
-      .then(b => { obj = URL.createObjectURL(b); setBlobUrl(obj) })
-      .catch(() => setFailed(true))
-    return () => { if (obj) URL.revokeObjectURL(obj) }
+      .then(b => {
+        if (cancelled) return
+        const obj = URL.createObjectURL(b)
+        setBlobUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev)
+          liveUrlRef.current = obj
+          return obj
+        })
+      })
+      .catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true }
   }, [url, token])
   if (blobUrl) {
     return <img src={blobUrl} alt={alt} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
