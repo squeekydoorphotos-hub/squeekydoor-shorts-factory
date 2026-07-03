@@ -273,6 +273,16 @@ def download_video(url: str, out_dir: str, log_fn) -> str:
     # mweb: mobile web, accepts browser cookies — sees the full DASH ladder
     # tv_embedded: embedded TV client, bypasses some restrictions
     strategies = [
+        # The "default" client (yt-dlp's built-in multi-client set) WITH cookies
+        # is the ONLY thing that still returns the full HD ladder in 2026 —
+        # confirmed against a real video: it selects 1440p (vp9 fmt 271), while
+        # android is capped at a pre-merged 360p (fmt 18) and mweb/web/ios/tv now
+        # require a GVS PO token or are DRM-blocked ("Requested format is not
+        # available" / "Only images are available"). This needs valid, logged-in
+        # YouTube cookies; without them the default client also falls back to
+        # 360p, so the android/mweb/tv rungs below remain as no-cookie fallbacks.
+        ("default",     True,  True,  "default + proxy + cookies"),
+        ("default",     False, True,  "default + cookies"),
         ("android",     True,  False, "android + proxy"),
         ("android",     False, False, "android no-proxy"),
         ("mweb",        True,  True,  "mweb + proxy + cookies"),
