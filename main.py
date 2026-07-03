@@ -1359,6 +1359,12 @@ def process_job(job_id: str, settings: dict):
     """
     log = lambda m: _log_job(job_id, m)
     out_dir = JOBS_DIR / job_id
+    if out_dir.exists():
+        # A run (or retry) regenerates every clip with fresh AI-picked
+        # titles, so wipe leftovers from previous attempts first —
+        # otherwise stale/dud files from crashed runs pile up in the clip
+        # picker forever now that job files live on persistent storage.
+        shutil.rmtree(str(out_dir), ignore_errors=True)
     out_dir.mkdir(parents=True, exist_ok=True)
     # Working files (the multi-GB source download, transcription chunks)
     # deliberately stay on the ephemeral disk, NOT inside out_dir: out_dir

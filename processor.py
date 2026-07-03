@@ -71,7 +71,11 @@ ENC_PRESET = "medium"
 # a standard 1080x1920 clip. Scaled by pixel count for other resolutions
 # (e.g. the 2160x3840 4K tier) so quality stays consistent across tiers
 # without blowing up 4K file size/encode time by a full 4x.
-_REF_BITRATE = 9_500_000
+# 16 Mbps (raised from 9.5): near-CBR spends bits evenly, so fast motion
+# (golf swings, quick pans) was getting starved and macroblocking — the
+# "square pixelation" complaint. 16M at 1080x1920@24 is ~0.32 bits/px/frame,
+# double the measured competitor reference, with real headroom for motion.
+_REF_BITRATE = 16_000_000
 _REF_PIXELS  = 1080 * 1920
 
 def _target_bitrate_args(w: int, h: int) -> list:
@@ -98,7 +102,10 @@ def _target_bitrate_args(w: int, h: int) -> list:
     scale = (pixels / _REF_PIXELS) ** 0.5
     target = int(_REF_BITRATE * scale)
     target = max(4_000_000, min(target, 24_000_000))  # sane floor/ceiling
-    bufsize = max(2_000_000, target // 2)
+    # Full 1-second buffer (was target/2): inside CBR, a larger VBV buffer
+    # is what lets the encoder borrow bits from calm moments and spend them
+    # on motion spikes — directly reduces blocking in fast scenes.
+    bufsize = max(2_000_000, target)
     return ["-b:v", str(target), "-minrate", str(target), "-maxrate", str(target),
             "-bufsize", str(bufsize), "-x264-params", "nal-hrd=cbr:force-cfr=1"]
 
