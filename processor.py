@@ -78,36 +78,34 @@ ENC_PRESET = "medium"
 _REF_BITRATE = 16_000_000
 _REF_PIXELS  = 1080 * 1920
 
+_YUNET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "models", "face_detection_yunet_2023mar.onnx")
+
 def _target_bitrate_args(w: int, h: int) -> list:
     """
-    ffmpeg args for a target-bitrate encode sized to the given output
-    resolution. Replaces plain -crf so dark/simple scenes can't get
-    starved down to a tiny, blocky bitrate.
+    Capped-CRF encode: constant-QUALITY (CRF) so every frame gets the bits
+    it actually needs, plus a high VBV ceiling so fast motion (golf swings,
+    quick pans) can spike far above the average instead of macroblocking.
 
-    Plain "-b:v X" alone is NOT enough — tested and confirmed that on truly
-    low-motion/static footage (a locked-off shot, a mostly-still product
-    photo, etc.) libx264's own rate control still quietly undershoots the
-    target by itself (a nominal 8 Mbps target came out as low as ~176 kbps
-    on a static test clip), because it decides the content doesn't "need"
-    the bits. That's the same failure mode as CRF, just less aggressive.
-    Forcing near-CBR behavior (minrate == maxrate == target, tight bufsize,
-    nal-hrd=cbr) makes the encoder actually spend the full budget every
-    time regardless of how simple the scene looks — confirmed via testing
-    to hold ~8 Mbps even on a frozen single-frame clip, at the same preset
-    speed as before (no timeout risk).
+    Why this replaced near-CBR: pinning minrate==maxrate==target also capped
+    the PEAK at the target, so a split-second of hard motion that wants ~3x
+    the average was physically forbidden from getting it and blocked up --
+    the "square pixelation on the swing" complaint. Measured on a hard-motion
+    test clip, capped-CRF spent ~3x the bits at the same preset to hold
+    quality. And unlike plain -b:v, CRF cannot be starved on a simple/dark
+    scene: it targets constant quality, so calm shots just use fewer bits
+    while still looking clean.
     """
+    _CRF = 18                       # quality target (lower = crisper/bigger)
+    _REF_MAXRATE = 40_000_000       # VBV ceiling at 1080x1920 for motion spikes
     pixels = max(1, w * h)
-    # Sub-linear scale (sqrt of the pixel ratio, not the full ratio) so 4K
-    # gets a real step up in quality without a full 4x file-size/time hit.
-    scale = (pixels / _REF_PIXELS) ** 0.5
-    target = int(_REF_BITRATE * scale)
-    target = max(4_000_000, min(target, 24_000_000))  # sane floor/ceiling
-    # Full 1-second buffer (was target/2): inside CBR, a larger VBV buffer
-    # is what lets the encoder borrow bits from calm moments and spend them
-    # on motion spikes — directly reduces blocking in fast scenes.
-    bufsize = max(2_000_000, target)
-    return ["-b:v", str(target), "-minrate", str(target), "-maxrate", str(target),
-            "-bufsize", str(bufsize), "-x264-params", "nal-hrd=cbr:force-cfr=1"]
+    scale = (pixels / _REF_PIXELS) ** 0.5    # sub-linear: 4K steps up, not 4x
+    maxrate = int(_REF_MAXRATE * scale)
+    maxrate = max(12_000_000, min(maxrate, 90_000_000))
+    bufsize = int(maxrate * 1.5)             # generous buffer so motion can borrow bits
+    return ["-crf", str(_CRF),
+            "-maxrate", str(maxrate), "-bufsize", str(bufsize),
+            "-x264-params", "force-cfr=1"]
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -761,58 +759,30 @@ def smart_reframe(input_path: str, output_path: str,
     # 30s clip lost the subject entirely). Profile cascade (run on the
     # frame and its horizontal mirror, since it's only trained for one
     # facing direction) catches the turned-head case frontal misses.
-    cascade_front = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    cascade_profile = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_profileface.xml")
+    # Modern DNN face detector (YuNet). Replaces the old Haar frontal+profile
+    # cascades, which lost the subject the moment he turned his head and
+    # false-triggered on patterned backgrounds (curtains, grids) -- the "weird
+    # framing" problem. YuNet is a tiny (~230KB) CNN that tracks faces through
+    # 3/4 and profile angles and returns a confidence score, so background
+    # textures no longer hijack the crop. Runs on CPU one small frame at a
+    # time, so it will not reintroduce the out-of-memory crashes.
+    _yunet = cv2.FaceDetectorYN.create(
+        _YUNET_PATH, "", (640, 640),
+        0.6,   # score threshold -- only confident faces survive
+        0.3,   # NMS threshold
+        50)    # top-k
 
-    def _valid_shape(fw, fh):
-        # Real faces are roughly square in aspect ratio. Patterned
-        # backgrounds (lattice curtains, grid textures) regularly trigger
-        # false-positive "faces" in these cascades that are oddly
-        # elongated — this rejects those without needing a heavier model.
-        if fh == 0:
-            return False
-        ar = fw / float(fh)
-        return 0.7 <= ar <= 1.4
-
-    def _skin_ratio(bgr_small, fx, fy, fw, fh):
-        # The decisive filter. Confirmed on real footage: a patterned
-        # curtain triggered a rock-stable false-positive "face" detection
-        # (same box, frame after frame — not a one-off, so the existing
-        # jump-outlier rejection never caught it), and because it was the
-        # LARGEST box detected each frame it won "pick the biggest face"
-        # and hijacked the crop, panning fully off the actual person for
-        # a long stretch. Its skin-tone pixel ratio measured 0.0 versus
-        # 0.47 for a real face box on the same footage — background
-        # patterns essentially never have real skin-tone color content,
-        # so this cheaply and reliably tells a real face from a textured
-        # false positive regardless of size or shape.
-        region = bgr_small[max(0, fy):fy + fh, max(0, fx):fx + fw]
-        if region.size == 0:
-            return 0.0
-        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-        Hc, Sc, Vc = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
-        mask = ((Hc < 25) | (Hc > 165)) & (Sc > 30) & (Sc < 180) & (Vc > 50)
-        return float(mask.mean())
-
-    SKIN_MIN = 0.15
-
-    def _detect_faces(bgr_small, gray):
-        candidates = []
-        for (fx, fy, fw, fh) in cascade_front.detectMultiScale(gray, 1.1, 5, minSize=(25, 25)):
-            if _valid_shape(fw, fh) and _skin_ratio(bgr_small, fx, fy, fw, fh) >= SKIN_MIN:
-                candidates.append((fx, fy, fw, fh))
-        for (fx, fy, fw, fh) in cascade_profile.detectMultiScale(gray, 1.1, 5, minSize=(25, 25)):
-            if _valid_shape(fw, fh) and _skin_ratio(bgr_small, fx, fy, fw, fh) >= SKIN_MIN:
-                candidates.append((fx, fy, fw, fh))
-        flipped_gray = cv2.flip(gray, 1)
-        flipped_bgr = cv2.flip(bgr_small, 1)
-        gw = gray.shape[1]
-        for (fx, fy, fw, fh) in cascade_profile.detectMultiScale(flipped_gray, 1.1, 5, minSize=(25, 25)):
-            if _valid_shape(fw, fh) and _skin_ratio(flipped_bgr, fx, fy, fw, fh) >= SKIN_MIN:
-                candidates.append((gw - fx - fw, fy, fw, fh))
-        return candidates
+    def _detect_faces(small):
+        hh, ww = small.shape[:2]
+        _yunet.setInputSize((ww, hh))
+        _, faces = _yunet.detect(small)
+        out = []
+        if faces is not None:
+            for f in faces:
+                fx, fy, fw, fh = int(f[0]), int(f[1]), int(f[2]), int(f[3])
+                if fw > 0 and fh > 0:
+                    out.append((fx, fy, fw, fh))
+        return out
 
     # ── PASS 1: collect raw face cx per frame. Each frame is discarded
     #    right after detection — only the tiny per-frame number survives,
@@ -828,8 +798,7 @@ def smart_reframe(input_path: str, output_path: str,
         n += 1
         scale = 640 / w
         small = cv2.resize(frame, (640, int(h * scale)))
-        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        faces = _detect_faces(small, gray)
+        faces = _detect_faces(small)
         if len(faces):
             # Pick the LARGEST face (closest/most prominent), not just the
             # first one OpenCV happens to return — fixes the camera randomly
